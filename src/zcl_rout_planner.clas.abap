@@ -18,7 +18,7 @@ CLASS zcl_rout_planner IMPLEMENTATION.
 *
 *    DATA lt_orders TYPE STANDARD TABLE OF zaorders.
 *    lt_orders = VALUE #(
-*        'Szkoła Podstawowa Nr 1 im. Juliusza Słowackiego w Białymstoku( cname   = 'Szkoła Podstawowa Nr 1 im. Juliusza Słowackiego w Białymstoku'
+*       ( cname   = 'Szkoła Podstawowa Nr 1 im. Juliusza Słowackiego w Białymstoku'
 *          address = 'ul. Juliusza Słowackiego 4 Białystok'
 *          uuid    = system_uuid->create_uuid_x16( ) )
 *        ( cname   = 'Szkoła Podstawowa Nr 5 im. Władysława Broniewskiego w Białymstoku'
@@ -89,18 +89,14 @@ CLASS zcl_rout_planner IMPLEMENTATION.
 *        out->write( exc->get_text( ) ).
 *    ENDTRY.
 
-*
+
     TRY.
-        out->write( mo_route->get_address( 'ul. Jaworowa 8  Białystok' ) ).
+        out->write( mo_route->update_orders( mo_route->get_orders(  ) ) ).
       CATCH cx_root INTO DATA(exc).
         out->write( exc->get_text( ) ).
     ENDTRY.
 
-*    TRY.
-*        out->write( mo_route->translit_polish( 'Szkoła Podstawowa Nr 47 im. Jana Klemensa Branickiego w Białymstoku' ) ).
-*      CATCH cx_root INTO DATA(exc).
-*        out->write( exc->get_text( ) ).
-*    ENDTRY.
+
 
 
 

@@ -3,10 +3,12 @@ CLASS lcl_route DEFINITION CREATE PRIVATE.
   PUBLIC SECTION.
     TYPES:
       BEGIN OF ls_address_data,
-        address   TYPE string,
+        vaddress  TYPE string,
         latitude  TYPE decfloat34,
         longitude TYPE decfloat34,
       END OF ls_address_data.
+
+    TYPES ty_orders TYPE STANDARD TABLE OF zaorders WITH EMPTY KEY.
 
     CLASS-METHODS create_instance
       RETURNING VALUE(ro_route) TYPE REF TO lcl_route.
@@ -21,8 +23,12 @@ CLASS lcl_route DEFINITION CREATE PRIVATE.
       RETURNING VALUE(rv_status) TYPE string
       RAISING   cx_static_check.
 
+    METHODS get_orders
+      RETURNING VALUE(rt_orders) TYPE ty_orders
+      RAISING   cx_static_check.
+
     METHODS get_address
-      IMPORTING iv_orders        TYPE string
+      IMPORTING iv_order         TYPE string
       RETURNING VALUE(rs_result) TYPE ls_address_data
       RAISING   cx_static_check.
 
@@ -34,6 +40,11 @@ CLASS lcl_route DEFINITION CREATE PRIVATE.
     METHODS encode_polish_url
       IMPORTING iv_string        TYPE string
       RETURNING VALUE(rv_string) TYPE string
+      RAISING   cx_static_check.
+
+    METHODS update_orders
+      IMPORTING it_orders           TYPE ty_orders
+      RETURNING VALUE(rv_tp_status) TYPE string
       RAISING   cx_static_check.
 
   PRIVATE SECTION.
@@ -70,7 +81,7 @@ CLASS lcl_route IMPLEMENTATION.
   ENDMETHOD.
 
   METHOD get_address.
-    DATA lv_addr TYPE string VALUE 'ul. Juliusza Słowackiego 4 Białystok'.
+    DATA(lv_addr) = iv_order.
 
     CONDENSE lv_addr.
     lv_addr = encode_polish_url( lv_addr ).
@@ -114,7 +125,7 @@ CLASS lcl_route IMPLEMENTATION.
 
     DATA ls_address TYPE ls_address_data.
 
-    ls_address-address   = <fs_formatted_address>.
+    ls_address-vaddress  = <fs_formatted_address>.
     ls_address-latitude  = <fs_latitude>.
     ls_address-longitude = <fs_longitude>.
 
@@ -213,5 +224,37 @@ CLASS lcl_route IMPLEMENTATION.
     ENDWHILE.
 
     rv_string = lv_string.
+  ENDMETHOD.
+
+  METHOD get_orders.
+    DATA rt_return TYPE ty_orders.
+
+    SELECT FROM zaorders
+              FIELDS client, uuid, cname, address
+              INTO  CORRESPONDING FIELDS OF TABLE @rt_return.
+    IF sy-subrc = 0.
+      rt_orders = rt_return.
+    ENDIF.
+  ENDMETHOD.
+
+  METHOD update_orders.
+
+    DATA lt_total_orders TYPE ty_orders.
+    DATA ls_full_address TYPE ls_address_data.
+    DATA ls_order_line   TYPE LINE OF ty_orders.
+
+    LOOP AT it_orders ASSIGNING FIELD-SYMBOL(<fs_order>).
+      ls_full_address = get_address( <fs_order>-address ).
+      ls_order_line = CORRESPONDING #( <fs_order> ).
+      ls_order_line = CORRESPONDING #( BASE ( ls_order_line ) ls_full_address ).
+      APPEND ls_order_line TO lt_total_orders.
+    ENDLOOP.
+
+*    MODIFY zaorders FROM TABLE @lt_total_orders.
+*    IF sy-subrc <> 0.
+*      rv_tp_status = 'Error during insert/update'.
+*    ELSE.
+*      rv_tp_status = 'Data Updated'.
+*    ENDIF.
   ENDMETHOD.
 ENDCLASS.
