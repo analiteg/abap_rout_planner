@@ -14,9 +14,9 @@ CLASS lcl_route DEFINITION CREATE PRIVATE.
         del_time     TYPE decfloat16,
       END OF ls_distance.
 
-
-    TYPES ty_orders    TYPE TABLE OF zaorders WITH  KEY uuid uuid_w.
+    TYPES ty_orders    TYPE STANDARD TABLE OF zaorders WITH  KEY uuid uuid_w.
     TYPES ty_warehouse TYPE STANDARD TABLE OF zawarehouse WITH KEY uuid_w.
+    TYPES ty_tarif     TYPE STANDARD TABLE OF zatarif WITH KEY min_distance max_distance.
 
     CLASS-METHODS create_instance
       RETURNING VALUE(ro_route) TYPE REF TO lcl_route.
@@ -47,6 +47,10 @@ CLASS lcl_route DEFINITION CREATE PRIVATE.
 
     METHODS get_warehouse
       RETURNING VALUE(rt_warehouse) TYPE ty_warehouse
+      RAISING   cx_static_check.
+
+    METHODS get_tarif
+      RETURNING VALUE(rt_tarif) TYPE ty_tarif
       RAISING   cx_static_check.
 
     METHODS get_address
@@ -267,10 +271,11 @@ CLASS lcl_route IMPLEMENTATION.
   ENDMETHOD.
 
   METHOD update_orders.
-    DATA lt_total_orders TYPE ty_orders.
+    DATA lt_total_orders  TYPE ty_orders.
     DATA lt_total_orders2 TYPE ty_orders.
-    DATA ls_full_address TYPE ls_address_data.
-    DATA ls_order_line   TYPE LINE OF ty_orders.
+     DATA lt_total_orders3 TYPE ty_orders.
+    DATA ls_full_address  TYPE ls_address_data.
+    DATA ls_order_line    TYPE LINE OF ty_orders.
 
     LOOP AT it_orders ASSIGNING FIELD-SYMBOL(<fs_order>).
       ls_full_address = get_address( <fs_order>-address ).
@@ -280,20 +285,32 @@ CLASS lcl_route IMPLEMENTATION.
     ENDLOOP.
 
     DATA lt_warehouse TYPE ty_warehouse.
-
     lt_warehouse = get_warehouse( ).
 
     LOOP AT lt_total_orders ASSIGNING FIELD-SYMBOL(<fs_order_2>).
       DATA(ls_warehouse) = lt_warehouse[ uuid_w = <fs_order_2>-uuid_w ].
       DATA(ls_full) = get_rout_data( is_order = <fs_order_2> is_warehouse = ls_warehouse ).
-
       ls_order_line = CORRESPONDING #( <fs_order_2> ).
       ls_order_line = CORRESPONDING #( BASE ( ls_order_line ) ls_full ).
       APPEND ls_order_line TO lt_total_orders2.
+    ENDLOOP.
+
+    " TODO: variable is assigned but never used (ABAP cleaner)
+    DATA lt_tarif TYPE SORTED TABLE OF zatarif WITH NON-UNIQUE KEY min_distance max_distance.
+    lt_tarif = get_tarif( ).
+
+    LOOP AT lt_total_orders2 ASSIGNING FIELD-SYMBOL(<fs_order_3>).
+    DATA(ls_tarif) = FILTER #( lt_tarif USING KEY primary_key WHERE min_distance < CONV #( <fs_order_3>-del_distance ) and  max_distance > CONV #( <fs_order_3>-del_distance ) ).
+    ls_order_line = CORRESPONDING #( <fs_order_3> ).
+    ls_order_line = CORRESPONDING #( BASE ( ls_order_line ) ls_tarif[ 1 ] ).
+    ls_order_line-del_cost = ls_tarif[ 1 ]-zone_tarif * ( ls_order_line-del_distance ) / 1000.
+
+    APPEND ls_order_line TO lt_total_orders3.
+
 
     ENDLOOP.
 
-    MODIFY zaorders FROM TABLE @lt_total_orders2.
+    MODIFY zaorders FROM TABLE @lt_total_orders3.
     IF sy-subrc <> 0.
       rv_tp_status = 'Error during insert/update'.
     ELSE.
@@ -362,9 +379,9 @@ CLASS lcl_route IMPLEMENTATION.
     ASSIGN COMPONENT 'TIME' OF STRUCTURE <fs_prop> TO FIELD-SYMBOL(<fs_time>).
     ASSIGN <fs_time>->* TO FIELD-SYMBOL(<fs_formatted_time>).
 
-   DATA ls_distance type ls_distance.
-    ls_distance-del_distance  = <fs_formatted_distance>.
-    ls_distance-del_time  = <fs_formatted_time>.
+    DATA ls_distance TYPE ls_distance.
+    ls_distance-del_distance = <fs_formatted_distance>.
+    ls_distance-del_time     = <fs_formatted_time>.
 
     rs_result = ls_distance.
   ENDMETHOD.
@@ -377,6 +394,17 @@ CLASS lcl_route IMPLEMENTATION.
               INTO  CORRESPONDING FIELDS OF TABLE @rt_return.
     IF sy-subrc = 0.
       rt_warehouse = rt_return.
+    ENDIF.
+  ENDMETHOD.
+
+  METHOD get_tarif.
+    DATA rt_return TYPE ty_tarif.
+
+    SELECT FROM zatarif
+              FIELDS *
+              INTO  CORRESPONDING FIELDS OF TABLE @rt_return.
+    IF sy-subrc = 0.
+      rt_tarif = rt_return.
     ENDIF.
   ENDMETHOD.
 ENDCLASS.

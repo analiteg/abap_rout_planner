@@ -34,25 +34,25 @@ CLASS zcl_rout_planner IMPLEMENTATION.
 *    DATA lt_tarifs TYPE STANDARD TABLE OF zatarif.
 *    lt_tarifs = VALUE #( ( uuid_z       = system_uuid->create_uuid_x16( )
 *                           min_distance = '0'
-*                           max_distance = '3'
+*                           max_distance = '3000'
 *                           del_zone     = 'A'
 *                           zone_tarif   = '0' )
 *
 *                         ( uuid_z       = system_uuid->create_uuid_x16( )
-*                           min_distance = '3'
-*                           max_distance = '5'
+*                           min_distance = '3000'
+*                           max_distance = '5000'
 *                           del_zone     = 'B'
 *                           zone_tarif   = '2' )
 *
 *                         ( uuid_z       = system_uuid->create_uuid_x16( )
-*                           min_distance = '5'
-*                           max_distance = '10'
+*                           min_distance = '5000'
+*                           max_distance = '10000'
 *                           del_zone     = 'C'
 *                           zone_tarif   = '3' )
 *
 *                         ( uuid_z       = system_uuid->create_uuid_x16( )
-*                           min_distance = '10'
-*                           max_distance = '50'
+*                           min_distance = '10000'
+*                           max_distance = '50000'
 *                           del_zone     = 'D'
 *                           zone_tarif   = '4' ) ).
 *
@@ -191,11 +191,7 @@ CLASS zcl_rout_planner IMPLEMENTATION.
     ENDTRY.
 
 
-*    TRY.
-*        out->write( mo_route->get_warehouse( ) ).
-*      CATCH cx_root INTO DATA(exc).
-*        out->write( exc->get_text( ) ).
-*    ENDTRY.
+
 
 
 
