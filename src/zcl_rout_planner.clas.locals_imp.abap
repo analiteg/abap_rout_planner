@@ -8,7 +8,15 @@ CLASS lcl_route DEFINITION CREATE PRIVATE.
         longitude TYPE decfloat34,
       END OF ls_address_data.
 
-    TYPES ty_orders TYPE STANDARD TABLE OF zaorders WITH EMPTY KEY.
+    TYPES:
+      BEGIN OF ls_distance,
+        del_distance TYPE decfloat16,
+        del_time     TYPE decfloat16,
+      END OF ls_distance.
+
+
+    TYPES ty_orders    TYPE TABLE OF zaorders WITH  KEY uuid uuid_w.
+    TYPES ty_warehouse TYPE STANDARD TABLE OF zawarehouse WITH KEY uuid_w.
 
     CLASS-METHODS create_instance
       RETURNING VALUE(ro_route) TYPE REF TO lcl_route.
@@ -23,8 +31,22 @@ CLASS lcl_route DEFINITION CREATE PRIVATE.
       RETURNING VALUE(rv_status) TYPE string
       RAISING   cx_static_check.
 
+    METHODS save_warehouse_db
+      IMPORTING lt_warehouse     TYPE STANDARD TABLE
+      RETURNING VALUE(rv_status) TYPE string
+      RAISING   cx_static_check.
+
+    METHODS save_tarifs_db
+      IMPORTING lt_tarifs        TYPE STANDARD TABLE
+      RETURNING VALUE(rv_status) TYPE string
+      RAISING   cx_static_check.
+
     METHODS get_orders
       RETURNING VALUE(rt_orders) TYPE ty_orders
+      RAISING   cx_static_check.
+
+    METHODS get_warehouse
+      RETURNING VALUE(rt_warehouse) TYPE ty_warehouse
       RAISING   cx_static_check.
 
     METHODS get_address
@@ -47,10 +69,17 @@ CLASS lcl_route DEFINITION CREATE PRIVATE.
       RETURNING VALUE(rv_tp_status) TYPE string
       RAISING   cx_static_check.
 
+    METHODS get_rout_data
+      IMPORTING is_order         TYPE LINE OF ty_orders
+                is_warehouse     TYPE LINE OF ty_warehouse
+      RETURNING VALUE(rs_result) TYPE ls_distance
+      RAISING   cx_static_check.
+
   PRIVATE SECTION.
     CLASS-DATA lo_route TYPE REF TO lcl_route.
 
     CONSTANTS base_url     TYPE string VALUE 'https://api.geoapify.com/v1/geocode/search?text='.
+    CONSTANTS route_url    TYPE string VALUE 'https://api.geoapify.com/v1/routing?waypoints='.
     CONSTANTS api_key      TYPE string VALUE 'fc1823fd9ff24e1db96dced76209c85d'.
     CONSTANTS content_type TYPE string VALUE 'Content-type'.
     CONSTANTS json_content TYPE string VALUE 'text/xml; charset=UTF-8'.
@@ -230,7 +259,7 @@ CLASS lcl_route IMPLEMENTATION.
     DATA rt_return TYPE ty_orders.
 
     SELECT FROM zaorders
-              FIELDS client, uuid, cname, address
+              FIELDS client, uuid,uuid_w, cname, address
               INTO  CORRESPONDING FIELDS OF TABLE @rt_return.
     IF sy-subrc = 0.
       rt_orders = rt_return.
@@ -238,8 +267,8 @@ CLASS lcl_route IMPLEMENTATION.
   ENDMETHOD.
 
   METHOD update_orders.
-
     DATA lt_total_orders TYPE ty_orders.
+    DATA lt_total_orders2 TYPE ty_orders.
     DATA ls_full_address TYPE ls_address_data.
     DATA ls_order_line   TYPE LINE OF ty_orders.
 
@@ -250,11 +279,104 @@ CLASS lcl_route IMPLEMENTATION.
       APPEND ls_order_line TO lt_total_orders.
     ENDLOOP.
 
-*    MODIFY zaorders FROM TABLE @lt_total_orders.
-*    IF sy-subrc <> 0.
-*      rv_tp_status = 'Error during insert/update'.
-*    ELSE.
-*      rv_tp_status = 'Data Updated'.
-*    ENDIF.
+    DATA lt_warehouse TYPE ty_warehouse.
+
+    lt_warehouse = get_warehouse( ).
+
+    LOOP AT lt_total_orders ASSIGNING FIELD-SYMBOL(<fs_order_2>).
+      DATA(ls_warehouse) = lt_warehouse[ uuid_w = <fs_order_2>-uuid_w ].
+      DATA(ls_full) = get_rout_data( is_order = <fs_order_2> is_warehouse = ls_warehouse ).
+
+      ls_order_line = CORRESPONDING #( <fs_order_2> ).
+      ls_order_line = CORRESPONDING #( BASE ( ls_order_line ) ls_full ).
+      APPEND ls_order_line TO lt_total_orders2.
+
+    ENDLOOP.
+
+    MODIFY zaorders FROM TABLE @lt_total_orders2.
+    IF sy-subrc <> 0.
+      rv_tp_status = 'Error during insert/update'.
+    ELSE.
+      rv_tp_status = 'Data Updated'.
+    ENDIF.
+  ENDMETHOD.
+
+  METHOD save_warehouse_db.
+    INSERT zawarehouse FROM TABLE @lt_warehouse ACCEPTING DUPLICATE KEYS.
+    IF sy-subrc = 0.
+      rv_status = | Inserted | & |{ lines( lt_warehouse ) }| & | rows|.
+    ELSE.
+      rv_status = | Error | & |{ sy-subrc }|.
+    ENDIF.
+  ENDMETHOD.
+
+  METHOD save_tarifs_db.
+    INSERT zatarif FROM TABLE @lt_tarifs ACCEPTING DUPLICATE KEYS.
+    IF sy-subrc = 0.
+      rv_status = | Inserted | & |{ lines( lt_tarifs ) }| & | rows|.
+    ELSE.
+      rv_status = | Error | & |{ sy-subrc }|.
+    ENDIF.
+  ENDMETHOD.
+
+  METHOD get_rout_data.
+    DATA(ls_order) = is_order.
+    DATA(ls_warehouse) = is_warehouse.
+
+    DATA(url) = |{ route_url }| &
+    |{ CONV string( ls_warehouse-latitude )  }| & |%2C| &
+    |{ CONV string( ls_warehouse-longitude ) }| & |%7C| &
+    |{ CONV string( ls_order-latitude ) }| & |%2C| &
+    |{ CONV string( ls_order-longitude ) }| &
+    |&mode=drive| & |&apiKey=| & |{ api_key }|.
+
+    DATA(client) = create_client( url ).
+    DATA(response) = client->execute( if_web_http_client=>get )->get_text( ).
+    client->close( ).
+
+    DATA lr_data TYPE REF TO data.
+
+    /ui2/cl_json=>deserialize( EXPORTING json         = response
+                                         pretty_name  = /ui2/cl_json=>pretty_mode-user
+                                         assoc_arrays = abap_true
+                               CHANGING  data         = lr_data ).
+
+    ASSIGN lr_data->* TO FIELD-SYMBOL(<fs_data>).
+    ASSIGN COMPONENT 'FEATURES' OF STRUCTURE <fs_data> TO FIELD-SYMBOL(<fs_features>).
+    ASSIGN <fs_features>->* TO FIELD-SYMBOL(<fs_features_table>).
+
+    LOOP AT <fs_features_table> ASSIGNING FIELD-SYMBOL(<fs_features_table_line>).
+      IF sy-tabix > 1.
+        EXIT.
+      ENDIF.
+      ASSIGN <fs_features_table_line>->* TO FIELD-SYMBOL(<fs_features_table_line_1>).
+
+    ENDLOOP.
+
+    ASSIGN COMPONENT 'PROPERTIES' OF STRUCTURE <fs_features_table_line_1> TO FIELD-SYMBOL(<fs_properties>).
+    ASSIGN <fs_properties>->* TO FIELD-SYMBOL(<fs_prop>).
+
+    ASSIGN COMPONENT 'DISTANCE' OF STRUCTURE <fs_prop> TO FIELD-SYMBOL(<fs_distance>).
+    ASSIGN <fs_distance>->* TO FIELD-SYMBOL(<fs_formatted_distance>).
+
+    ASSIGN COMPONENT 'TIME' OF STRUCTURE <fs_prop> TO FIELD-SYMBOL(<fs_time>).
+    ASSIGN <fs_time>->* TO FIELD-SYMBOL(<fs_formatted_time>).
+
+   DATA ls_distance type ls_distance.
+    ls_distance-del_distance  = <fs_formatted_distance>.
+    ls_distance-del_time  = <fs_formatted_time>.
+
+    rs_result = ls_distance.
+  ENDMETHOD.
+
+  METHOD get_warehouse.
+    DATA rt_return TYPE ty_warehouse.
+
+    SELECT FROM zawarehouse
+              FIELDS client, uuid_w, address, longitude,latitude
+              INTO  CORRESPONDING FIELDS OF TABLE @rt_return.
+    IF sy-subrc = 0.
+      rt_warehouse = rt_return.
+    ENDIF.
   ENDMETHOD.
 ENDCLASS.
