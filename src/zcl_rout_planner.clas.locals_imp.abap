@@ -26,17 +26,17 @@ CLASS lcl_route DEFINITION CREATE PRIVATE.
       RETURNING VALUE(result) TYPE REF TO if_web_http_client
       RAISING   cx_static_check.
 
-    METHODS save_orders_into_db
+    METHODS save_orders_data_into_db
       IMPORTING lt_orders        TYPE STANDARD TABLE
       RETURNING VALUE(rv_status) TYPE string
       RAISING   cx_static_check.
 
-    METHODS save_warehouse_db
+    METHODS save_warehouses_data_into_db
       IMPORTING lt_warehouse     TYPE STANDARD TABLE
       RETURNING VALUE(rv_status) TYPE string
       RAISING   cx_static_check.
 
-    METHODS save_tarifs_db
+    METHODS save_tarifs_data_into_db
       IMPORTING lt_tarifs        TYPE STANDARD TABLE
       RETURNING VALUE(rv_status) TYPE string
       RAISING   cx_static_check.
@@ -45,22 +45,28 @@ CLASS lcl_route DEFINITION CREATE PRIVATE.
       RETURNING VALUE(rt_orders) TYPE ty_orders
       RAISING   cx_static_check.
 
-    METHODS get_warehouse
+    METHODS get_warehouses
       RETURNING VALUE(rt_warehouse) TYPE ty_warehouse
       RAISING   cx_static_check.
 
-    METHODS get_tarif
+    METHODS get_tarifs
       RETURNING VALUE(rt_tarif) TYPE ty_tarif
       RAISING   cx_static_check.
 
-    METHODS get_address
+    METHODS get_geo_data
       IMPORTING iv_order         TYPE string
       RETURNING VALUE(rs_result) TYPE ls_address_data
       RAISING   cx_static_check.
 
-    METHODS translit_polish
-      IMPORTING iv_string        TYPE string
-      RETURNING VALUE(rv_string) TYPE string
+    METHODS get_rout_data
+      IMPORTING is_order         TYPE LINE OF ty_orders
+                is_warehouse     TYPE LINE OF ty_warehouse
+      RETURNING VALUE(rs_result) TYPE ls_distance
+      RAISING   cx_static_check.
+
+    METHODS update_orders_data
+      IMPORTING it_orders           TYPE ty_orders
+      RETURNING VALUE(rv_tp_status) TYPE string
       RAISING   cx_static_check.
 
     METHODS encode_polish_url
@@ -68,15 +74,9 @@ CLASS lcl_route DEFINITION CREATE PRIVATE.
       RETURNING VALUE(rv_string) TYPE string
       RAISING   cx_static_check.
 
-    METHODS update_orders
-      IMPORTING it_orders           TYPE ty_orders
-      RETURNING VALUE(rv_tp_status) TYPE string
-      RAISING   cx_static_check.
-
-    METHODS get_rout_data
-      IMPORTING is_order         TYPE LINE OF ty_orders
-                is_warehouse     TYPE LINE OF ty_warehouse
-      RETURNING VALUE(rs_result) TYPE ls_distance
+    METHODS get_optimal_delivery_rout
+*      IMPORTING iv_string        TYPE string
+      RETURNING VALUE(rv_string) TYPE string
       RAISING   cx_static_check.
 
   PRIVATE SECTION.
@@ -99,10 +99,28 @@ CLASS lcl_route IMPLEMENTATION.
     lo_route = ro_route.
   ENDMETHOD.
 
-  METHOD save_orders_into_db.
+  METHOD save_orders_data_into_db.
     INSERT zaorders FROM TABLE @lt_orders ACCEPTING DUPLICATE KEYS.
     IF sy-subrc = 0.
       rv_status = | Inserted | & |{ lines( lt_orders ) }| & | rows|.
+    ELSE.
+      rv_status = | Error | & |{ sy-subrc }|.
+    ENDIF.
+  ENDMETHOD.
+
+  METHOD save_warehouses_data_into_db.
+    INSERT zawarehouse FROM TABLE @lt_warehouse ACCEPTING DUPLICATE KEYS.
+    IF sy-subrc = 0.
+      rv_status = | Inserted | & |{ lines( lt_warehouse ) }| & | rows|.
+    ELSE.
+      rv_status = | Error | & |{ sy-subrc }|.
+    ENDIF.
+  ENDMETHOD.
+
+  METHOD save_tarifs_data_into_db.
+    INSERT zatarif FROM TABLE @lt_tarifs ACCEPTING DUPLICATE KEYS.
+    IF sy-subrc = 0.
+      rv_status = | Inserted | & |{ lines( lt_tarifs ) }| & | rows|.
     ELSE.
       rv_status = | Error | & |{ sy-subrc }|.
     ENDIF.
@@ -113,7 +131,55 @@ CLASS lcl_route IMPLEMENTATION.
     result = cl_web_http_client_manager=>create_by_http_destination( dest ).
   ENDMETHOD.
 
-  METHOD get_address.
+  METHOD encode_polish_url.
+    TYPES:
+      BEGIN OF ls_polish_trans,
+        psymbol TYPE string,
+        usimbol TYPE string,
+      END OF ls_polish_trans.
+
+    DATA lt_translit TYPE HASHED TABLE OF ls_polish_trans WITH UNIQUE KEY psymbol.
+
+    lt_translit = VALUE #( ( psymbol   = 'ą' usimbol = '%C4%85' )
+                           ( psymbol   = 'Ą' usimbol = '%C4%84' )
+                           ( psymbol   = 'ć' usimbol = '%C4%87' )
+                           ( psymbol   = 'Ć' usimbol = '%C4%86' )
+                           ( psymbol   = 'ę' usimbol = '%C4%99' )
+                           ( psymbol   = 'Ę' usimbol = '%C4%98' )
+                           ( psymbol   = 'ł' usimbol = '%C5%82' )
+                           ( psymbol   = 'Ł' usimbol = '%C5%81' )
+                           ( psymbol   = 'ń' usimbol = '%C5%84' )
+                           ( psymbol   = 'Ń' usimbol = '%C5%83' )
+                           ( psymbol   = 'ó' usimbol = '%C3%B3' )
+                           ( psymbol   = 'Ó' usimbol = '%C3%93' )
+                           ( psymbol   = 'ś' usimbol = '%C5%9B' )
+                           ( psymbol   = 'Ś' usimbol = '%C5%9A' )
+                           ( psymbol   = 'ż' usimbol = '%C5%BC' )
+                           ( psymbol   = 'Ż' usimbol = '%C5%BB' )
+                           ( psymbol   = 'ź' usimbol = '%C5%BA' )
+                           ( psymbol   = 'Ź' usimbol = '%C5%B9' )
+                           ( psymbol   = ' ' usimbol = '%20' ) ).
+
+    DATA(lv_string) = iv_string.
+    DATA index    TYPE i.
+    DATA char     TYPE c LENGTH 1.
+    DATA new_char TYPE string.
+    DATA(length) = strlen( lv_string ).
+
+    WHILE index < length.
+      char = lv_string+index(1).
+      IF line_exists( lt_translit[ psymbol = char ] ).
+        new_char = lt_translit[ psymbol = char ]-usimbol.
+        length += ( strlen( new_char ) - 1 ).
+        REPLACE char WITH new_char INTO lv_string.
+      ENDIF.
+      index += 1.
+    ENDWHILE.
+
+    rv_string = lv_string.
+  ENDMETHOD.
+
+  METHOD get_geo_data.
     DATA(lv_addr) = iv_order.
 
     CONDENSE lv_addr.
@@ -165,100 +231,6 @@ CLASS lcl_route IMPLEMENTATION.
     rs_result = ls_address.
   ENDMETHOD.
 
-  METHOD translit_polish.
-    TYPES:
-      BEGIN OF ls_polish_trans,
-        psymbol TYPE string,
-        usimbol TYPE string,
-      END OF ls_polish_trans.
-
-    DATA lt_translit TYPE HASHED TABLE OF ls_polish_trans WITH UNIQUE KEY psymbol.
-
-    lt_translit = VALUE #( ( psymbol   = 'ą' usimbol = 'a' )
-                           ( psymbol   = 'Ą' usimbol = 'A' )
-                           ( psymbol   = 'ć' usimbol = 'c' )
-                           ( psymbol   = 'Ć' usimbol = 'C' )
-                           ( psymbol   = 'ę' usimbol = 'e' )
-                           ( psymbol   = 'Ę' usimbol = 'E' )
-                           ( psymbol   = 'ł' usimbol = 'l' )
-                           ( psymbol   = 'Ł' usimbol = 'L' )
-                           ( psymbol   = 'ń' usimbol = 'n' )
-                           ( psymbol   = 'Ń' usimbol = 'N' )
-                           ( psymbol   = 'ó' usimbol = 'o' )
-                           ( psymbol   = 'Ó' usimbol = 'O' )
-                           ( psymbol   = 'ś' usimbol = 's' )
-                           ( psymbol   = 'Ś' usimbol = 'S' )
-                           ( psymbol   = 'ż' usimbol = 'z' )
-                           ( psymbol   = 'Ż' usimbol = 'Z' )
-                           ( psymbol   = 'ź' usimbol = 'z' )
-                           ( psymbol   = 'Ź' usimbol = 'Z' ) ).
-
-    DATA(lv_string) = iv_string.
-    DATA index    TYPE i.
-    DATA char     TYPE c LENGTH 1.
-    DATA new_char TYPE c LENGTH 1.
-    DATA(length) = strlen( lv_string ).
-
-    WHILE index < length.
-      char = lv_string+index(1).
-      IF line_exists( lt_translit[ psymbol = char ] ).
-        new_char = lt_translit[ psymbol = char ]-usimbol.
-        REPLACE char WITH new_char INTO lv_string.
-      ENDIF.
-      index += 1.
-    ENDWHILE.
-
-    rv_string = lv_string.
-  ENDMETHOD.
-
-  METHOD encode_polish_url.
-    TYPES:
-      BEGIN OF ls_polish_trans,
-        psymbol TYPE string,
-        usimbol TYPE string,
-      END OF ls_polish_trans.
-
-    DATA lt_translit TYPE HASHED TABLE OF ls_polish_trans WITH UNIQUE KEY psymbol.
-
-    lt_translit = VALUE #( ( psymbol   = 'ą' usimbol = '%C4%85' )
-                           ( psymbol   = 'Ą' usimbol = '%C4%84' )
-                           ( psymbol   = 'ć' usimbol = '%C4%87' )
-                           ( psymbol   = 'Ć' usimbol = '%C4%86' )
-                           ( psymbol   = 'ę' usimbol = '%C4%99' )
-                           ( psymbol   = 'Ę' usimbol = '%C4%98' )
-                           ( psymbol   = 'ł' usimbol = '%C5%82' )
-                           ( psymbol   = 'Ł' usimbol = '%C5%81' )
-                           ( psymbol   = 'ń' usimbol = '%C5%84' )
-                           ( psymbol   = 'Ń' usimbol = '%C5%83' )
-                           ( psymbol   = 'ó' usimbol = '%C3%B3' )
-                           ( psymbol   = 'Ó' usimbol = '%C3%93' )
-                           ( psymbol   = 'ś' usimbol = '%C5%9B' )
-                           ( psymbol   = 'Ś' usimbol = '%C5%9A' )
-                           ( psymbol   = 'ż' usimbol = '%C5%BC' )
-                           ( psymbol   = 'Ż' usimbol = '%C5%BB' )
-                           ( psymbol   = 'ź' usimbol = '%C5%BA' )
-                           ( psymbol   = 'Ź' usimbol = '%C5%B9' )
-                           ( psymbol   = ' ' usimbol = '%20' ) ).
-
-    DATA(lv_string) = iv_string.
-    DATA index    TYPE i.
-    DATA char     TYPE c LENGTH 1.
-    DATA new_char TYPE string.
-    DATA(length) = strlen( lv_string ).
-
-    WHILE index < length.
-      char = lv_string+index(1).
-      IF line_exists( lt_translit[ psymbol = char ] ).
-        new_char = lt_translit[ psymbol = char ]-usimbol.
-        length += ( strlen( new_char ) - 1 ).
-        REPLACE char WITH new_char INTO lv_string.
-      ENDIF.
-      index += 1.
-    ENDWHILE.
-
-    rv_string = lv_string.
-  ENDMETHOD.
-
   METHOD get_orders.
     DATA rt_return TYPE ty_orders.
 
@@ -270,69 +242,25 @@ CLASS lcl_route IMPLEMENTATION.
     ENDIF.
   ENDMETHOD.
 
-  METHOD update_orders.
-    DATA lt_total_orders  TYPE ty_orders.
-    DATA lt_total_orders2 TYPE ty_orders.
-     DATA lt_total_orders3 TYPE ty_orders.
-    DATA ls_full_address  TYPE ls_address_data.
-    DATA ls_order_line    TYPE LINE OF ty_orders.
+  METHOD get_warehouses.
+    DATA rt_return TYPE ty_warehouse.
 
-    LOOP AT it_orders ASSIGNING FIELD-SYMBOL(<fs_order>).
-      ls_full_address = get_address( <fs_order>-address ).
-      ls_order_line = CORRESPONDING #( <fs_order> ).
-      ls_order_line = CORRESPONDING #( BASE ( ls_order_line ) ls_full_address ).
-      APPEND ls_order_line TO lt_total_orders.
-    ENDLOOP.
-
-    DATA lt_warehouse TYPE ty_warehouse.
-    lt_warehouse = get_warehouse( ).
-
-    LOOP AT lt_total_orders ASSIGNING FIELD-SYMBOL(<fs_order_2>).
-      DATA(ls_warehouse) = lt_warehouse[ uuid_w = <fs_order_2>-uuid_w ].
-      DATA(ls_full) = get_rout_data( is_order = <fs_order_2> is_warehouse = ls_warehouse ).
-      ls_order_line = CORRESPONDING #( <fs_order_2> ).
-      ls_order_line = CORRESPONDING #( BASE ( ls_order_line ) ls_full ).
-      APPEND ls_order_line TO lt_total_orders2.
-    ENDLOOP.
-
-    " TODO: variable is assigned but never used (ABAP cleaner)
-    DATA lt_tarif TYPE SORTED TABLE OF zatarif WITH NON-UNIQUE KEY min_distance max_distance.
-    lt_tarif = get_tarif( ).
-
-    LOOP AT lt_total_orders2 ASSIGNING FIELD-SYMBOL(<fs_order_3>).
-    DATA(ls_tarif) = FILTER #( lt_tarif USING KEY primary_key WHERE min_distance < CONV #( <fs_order_3>-del_distance ) and  max_distance > CONV #( <fs_order_3>-del_distance ) ).
-    ls_order_line = CORRESPONDING #( <fs_order_3> ).
-    ls_order_line = CORRESPONDING #( BASE ( ls_order_line ) ls_tarif[ 1 ] ).
-    ls_order_line-del_cost = ls_tarif[ 1 ]-zone_tarif * ( ls_order_line-del_distance ) / 1000.
-
-    APPEND ls_order_line TO lt_total_orders3.
-
-
-    ENDLOOP.
-
-    MODIFY zaorders FROM TABLE @lt_total_orders3.
-    IF sy-subrc <> 0.
-      rv_tp_status = 'Error during insert/update'.
-    ELSE.
-      rv_tp_status = 'Data Updated'.
+    SELECT FROM zawarehouse
+              FIELDS client, uuid_w, address, longitude,latitude
+              INTO  CORRESPONDING FIELDS OF TABLE @rt_return.
+    IF sy-subrc = 0.
+      rt_warehouse = rt_return.
     ENDIF.
   ENDMETHOD.
 
-  METHOD save_warehouse_db.
-    INSERT zawarehouse FROM TABLE @lt_warehouse ACCEPTING DUPLICATE KEYS.
-    IF sy-subrc = 0.
-      rv_status = | Inserted | & |{ lines( lt_warehouse ) }| & | rows|.
-    ELSE.
-      rv_status = | Error | & |{ sy-subrc }|.
-    ENDIF.
-  ENDMETHOD.
+  METHOD get_tarifs.
+    DATA rt_return TYPE ty_tarif.
 
-  METHOD save_tarifs_db.
-    INSERT zatarif FROM TABLE @lt_tarifs ACCEPTING DUPLICATE KEYS.
+    SELECT FROM zatarif
+              FIELDS *
+              INTO  CORRESPONDING FIELDS OF TABLE @rt_return.
     IF sy-subrc = 0.
-      rv_status = | Inserted | & |{ lines( lt_tarifs ) }| & | rows|.
-    ELSE.
-      rv_status = | Error | & |{ sy-subrc }|.
+      rt_tarif = rt_return.
     ENDIF.
   ENDMETHOD.
 
@@ -386,25 +314,168 @@ CLASS lcl_route IMPLEMENTATION.
     rs_result = ls_distance.
   ENDMETHOD.
 
-  METHOD get_warehouse.
-    DATA rt_return TYPE ty_warehouse.
+  METHOD update_orders_data.
+    DATA lt_total_orders_step_1 TYPE ty_orders.
+    DATA lt_total_orders_step_2 TYPE ty_orders.
+    DATA lt_total_orders_step_3 TYPE ty_orders.
+    DATA ls_full_address        TYPE ls_address_data.
+    DATA ls_order_line          TYPE LINE OF ty_orders.
 
-    SELECT FROM zawarehouse
-              FIELDS client, uuid_w, address, longitude,latitude
-              INTO  CORRESPONDING FIELDS OF TABLE @rt_return.
-    IF sy-subrc = 0.
-      rt_warehouse = rt_return.
+    LOOP AT it_orders ASSIGNING FIELD-SYMBOL(<fs_order_step_1>).
+      ls_full_address = get_geo_data( <fs_order_step_1>-address ).
+      ls_order_line = CORRESPONDING #( <fs_order_step_1> ).
+      ls_order_line = CORRESPONDING #( BASE ( ls_order_line ) ls_full_address ).
+      APPEND ls_order_line TO lt_total_orders_step_1.
+    ENDLOOP.
+
+    DATA lt_warehouse TYPE ty_warehouse.
+    lt_warehouse = get_warehouses( ).
+
+    LOOP AT lt_total_orders_step_1 ASSIGNING FIELD-SYMBOL(<fs_order_step_2>).
+      DATA(ls_warehouse) = lt_warehouse[ uuid_w = <fs_order_step_2>-uuid_w ].
+      DATA(ls_full) = get_rout_data( is_order = <fs_order_step_2> is_warehouse = ls_warehouse ).
+      ls_order_line = CORRESPONDING #( <fs_order_step_2> ).
+      ls_order_line = CORRESPONDING #( BASE ( ls_order_line ) ls_full ).
+      APPEND ls_order_line TO lt_total_orders_step_2.
+    ENDLOOP.
+
+    DATA lt_tarif TYPE SORTED TABLE OF zatarif WITH NON-UNIQUE KEY min_distance max_distance.
+    lt_tarif = get_tarifs( ).
+
+    LOOP AT lt_total_orders_step_2 ASSIGNING FIELD-SYMBOL(<fs_order_step_3>).
+      DATA(ls_tarif) = FILTER #( lt_tarif USING KEY primary_key WHERE min_distance < CONV #( <fs_order_step_3>-del_distance ) AND max_distance > CONV #( <fs_order_step_3>-del_distance ) ).
+      ls_order_line = CORRESPONDING #( <fs_order_step_3> ).
+      ls_order_line = CORRESPONDING #( BASE ( ls_order_line ) ls_tarif[ 1 ] ).
+      ls_order_line-del_cost = ls_tarif[ 1 ]-zone_tarif * ( ls_order_line-del_distance ) / 1000.
+
+      APPEND ls_order_line TO lt_total_orders_step_3.
+
+    ENDLOOP.
+
+    MODIFY zaorders FROM TABLE @lt_total_orders_step_3.
+    IF sy-subrc <> 0.
+      rv_tp_status = 'Error during insert/update'.
+    ELSE.
+      rv_tp_status = 'Data Updated'.
     ENDIF.
   ENDMETHOD.
 
-  METHOD get_tarif.
-    DATA rt_return TYPE ty_tarif.
+  METHOD get_optimal_delivery_rout.
+    SELECT
+    zo~uuid,
+    zo~longitude AS olongitude,
+    zo~latitude AS olatitude,
+    zw~uuid_w,
+    zw~longitude AS wlongitude,
+    zw~latitude AS wlatitude
+    FROM zaorders AS zo
+              INNER JOIN zawarehouse AS zw ON zo~uuid_w = zw~uuid_w
+              " TODO: variable is assigned but never used (ABAP cleaner)
+              INTO   TABLE @DATA(rt_return).
 
-    SELECT FROM zatarif
-              FIELDS *
-              INTO  CORRESPONDING FIELDS OF TABLE @rt_return.
-    IF sy-subrc = 0.
-      rt_tarif = rt_return.
-    ENDIF.
+*    CONSTANTS base_route_url     TYPE string VALUE 'https://api.geoapify.com/v1/routeplanner?apiKey=fc1823fd9ff24e1db96dced76209c85d'.
+
+    TYPES : BEGIN OF ty_agents,
+              start_location TYPE STANDARD TABLE OF decfloat34 WITH EMPTY KEY,
+              time_windows   TYPE STANDARD TABLE OF i WITH EMPTY KEY,
+            END OF ty_agents.
+
+    TYPES : BEGIN OF ty_delivery,
+              location_index TYPE i,
+              duration       TYPE i,
+            END OF ty_delivery.
+
+    TYPES : BEGIN OF ty_pickup,
+              location TYPE     STANDARD TABLE OF decfloat34 WITH EMPTY KEY,
+              duration TYPE i,
+            END OF ty_pickup.
+
+
+
+    TYPES : BEGIN OF ty_shipments,
+              id       TYPE string,
+              delivery TYPE ty_delivery,
+              pickup   TYPE ty_pickup,
+            END OF ty_shipments.
+
+    TYPES : BEGIN OF ty_locations,
+              id       TYPE string,
+              location TYPE STANDARD TABLE OF decfloat34 WITH EMPTY KEY,
+            END OF ty_locations.
+
+    TYPES : BEGIN OF ty_body,
+              mode      TYPE string,
+              agents    TYPE STANDARD TABLE OF ty_agents WITH EMPTY KEY,
+              shipments TYPE STANDARD TABLE OF ty_shipments WITH EMPTY KEY,
+              locations TYPE STANDARD TABLE OF ty_locations WITH EMPTY KEY,
+            END OF ty_body.
+
+    " Agents
+    DATA agents          TYPE STANDARD TABLE OF ty_agents WITH EMPTY KEY.
+    DATA start_location1 TYPE STANDARD TABLE OF decfloat34 WITH EMPTY KEY.
+    DATA time_windows1   TYPE STANDARD TABLE OF i WITH EMPTY KEY.
+
+    start_location1 = VALUE #( ( CONV #( '23.19756076017041' ) )
+                               ( CONV #( '53.14327315' ) ) ).
+
+    time_windows1 = VALUE #( ( 0 )
+                             ( 10800  ) ).
+
+    agents = VALUE #( ( start_location = start_location1  time_windows = time_windows1 ) ).
+
+* Shipments
+    DATA shipments          TYPE STANDARD TABLE OF ty_shipments WITH EMPTY KEY.
+    DATA delivery type ty_delivery.
+    DATA pick_location TYPE STANDARD TABLE OF decfloat34 WITH EMPTY KEY.
+    DATA pickup1 type ty_pickup.
+
+    pick_location = VALUE #( ( CONV #( '23.177131986111114' ) )
+                               ( CONV #( '53.12760565000001' ) ) ).
+
+    delivery = VALUE #( location_index =  0   duration = 120 ).
+    pickup1 = VALUE #(  location = pick_location  duration = 120  ).
+
+    shipments = VALUE #( ( id = 'order_1' pickup = pickup1 delivery = delivery ) ).
+
+
+
+
+    " Locations warehouse
+    DATA locations TYPE STANDARD TABLE OF ty_locations WITH EMPTY KEY.
+    DATA location1 TYPE STANDARD TABLE OF decfloat34 WITH EMPTY KEY.
+
+    location1 = VALUE #( ( CONV #( '23.1585484' ) )
+                         ( CONV #( '53.13197' ) ) ).
+
+    locations = VALUE #( ( id = 'wharehouse-0'  location = location1 ) ).
+
+    " Body
+    DATA body TYPE STANDARD TABLE OF ty_body WITH EMPTY KEY.
+    body = VALUE #( ( mode = 'drive' agents = agents shipments = shipments locations = locations ) ).
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+    DATA(lv_json) = /ui2/cl_json=>serialize( data = body  pretty_name = /ui2/cl_json=>pretty_mode-low_case ).
+
+
+
+
+
+
+
+
+
   ENDMETHOD.
 ENDCLASS.

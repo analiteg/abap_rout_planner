@@ -184,16 +184,20 @@ CLASS zcl_rout_planner IMPLEMENTATION.
 *        out->write( exc->get_text( ) ).
 *    ENDTRY.
 *
+*    TRY.
+*        out->write( mo_route->update_orders_data( mo_route->get_orders( ) ) ).
+*      CATCH cx_root INTO DATA(exc).
+*        out->write( exc->get_text( ) ).
+*    ENDTRY.
+
+
+
+
     TRY.
-        out->write( mo_route->update_orders( mo_route->get_orders( ) ) ).
+        out->write( mo_route->get_optimal_delivery_rout( )  ).
       CATCH cx_root INTO DATA(exc).
         out->write( exc->get_text( ) ).
     ENDTRY.
-
-
-
-
-
 
 
 
