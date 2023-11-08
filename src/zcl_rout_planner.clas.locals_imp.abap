@@ -235,7 +235,7 @@ CLASS lcl_route IMPLEMENTATION.
     DATA rt_return TYPE ty_orders.
 
     SELECT FROM zaorders
-              FIELDS client, uuid,uuid_w, cname, address
+              FIELDS *
               INTO  CORRESPONDING FIELDS OF TABLE @rt_return.
     IF sy-subrc = 0.
       rt_orders = rt_return.
@@ -380,17 +380,15 @@ CLASS lcl_route IMPLEMENTATION.
               time_windows   TYPE STANDARD TABLE OF i WITH EMPTY KEY,
             END OF ty_agents.
 
-    TYPES : BEGIN OF ty_delivery,
+    TYPES : BEGIN OF ty_pickup,
               location_index TYPE i,
               duration       TYPE i,
-            END OF ty_delivery.
-
-    TYPES : BEGIN OF ty_pickup,
-              location TYPE     STANDARD TABLE OF decfloat34 WITH EMPTY KEY,
-              duration TYPE i,
             END OF ty_pickup.
 
-
+    TYPES : BEGIN OF ty_delivery,
+              location TYPE STANDARD TABLE OF decfloat34 WITH EMPTY KEY,
+              duration TYPE i,
+            END OF ty_delivery.
 
     TYPES : BEGIN OF ty_shipments,
               id       TYPE string,
@@ -412,42 +410,32 @@ CLASS lcl_route IMPLEMENTATION.
 
     " Agents
     DATA agents          TYPE STANDARD TABLE OF ty_agents WITH EMPTY KEY.
-    DATA start_location1 TYPE STANDARD TABLE OF decfloat34 WITH EMPTY KEY.
-    DATA time_windows1   TYPE STANDARD TABLE OF i WITH EMPTY KEY.
-
-    start_location1 = VALUE #( ( CONV #( '23.19756076017041' ) )
-                               ( CONV #( '53.14327315' ) ) ).
-
-    time_windows1 = VALUE #( ( 0 )
-                             ( 10800  ) ).
-
-    agents = VALUE #( ( start_location = start_location1  time_windows = time_windows1 ) ).
-
-* Shipments
-    DATA shipments          TYPE STANDARD TABLE OF ty_shipments WITH EMPTY KEY.
-    DATA delivery type ty_delivery.
-    DATA pick_location TYPE STANDARD TABLE OF decfloat34 WITH EMPTY KEY.
-    DATA pickup1 type ty_pickup.
-
-    pick_location = VALUE #( ( CONV #( '23.177131986111114' ) )
-                               ( CONV #( '53.12760565000001' ) ) ).
-
-    delivery = VALUE #( location_index =  0   duration = 120 ).
-    pickup1 = VALUE #(  location = pick_location  duration = 120  ).
-
-    shipments = VALUE #( ( id = 'order_1' pickup = pickup1 delivery = delivery ) ).
 
 
+    agents = VALUE #( ( start_location = VALUE #( ( CONV #( '23.19756076017041' ) ) ( CONV #( '53.14327315' ) ) )  time_windows = VALUE #(  ( 0 ) ( 10800  )  )   ) ).
 
 
     " Locations warehouse
-    DATA locations TYPE STANDARD TABLE OF ty_locations WITH EMPTY KEY.
-    DATA location1 TYPE STANDARD TABLE OF decfloat34 WITH EMPTY KEY.
+    DATA locations TYPE STANDARD TABLE OF ty_locations WITH KEY id.
+    DATA(warehouse) = get_warehouses( ).
+    LOOP AT warehouse ASSIGNING FIELD-SYMBOL(<fs_warehouse>).
+      locations = VALUE #( BASE locations ( id = <fs_warehouse>-uuid_w  location = VALUE #( (  <fs_warehouse>-longitude )  (  <fs_warehouse>-latitude ) ) ) ).
+    ENDLOOP.
 
-    location1 = VALUE #( ( CONV #( '23.1585484' ) )
-                         ( CONV #( '53.13197' ) ) ).
 
-    locations = VALUE #( ( id = 'wharehouse-0'  location = location1 ) ).
+    " Shipments
+    DATA shipments     TYPE STANDARD TABLE OF ty_shipments WITH EMPTY KEY.
+    DATA(orders) = get_orders( ).
+    LOOP AT orders ASSIGNING FIELD-SYMBOL(<fs_orders>).
+      shipments = VALUE #( BASE shipments ( id = <fs_orders>-uuid pickup = VALUE #( location_index =  line_index( locations[ id = <fs_orders>-uuid_w ]  ) - 1   duration = 120  )
+                                            delivery = VALUE #(  location = VALUE #( (  <fs_orders>-longitude  ) (  <fs_orders>-latitude  ) )  duration = 120 ) ) ).
+    ENDLOOP.
+
+
+
+
+
+
 
     " Body
     DATA body TYPE STANDARD TABLE OF ty_body WITH EMPTY KEY.
@@ -461,21 +449,6 @@ CLASS lcl_route IMPLEMENTATION.
 
 
 
-
-
-
-
-
-
     DATA(lv_json) = /ui2/cl_json=>serialize( data = body  pretty_name = /ui2/cl_json=>pretty_mode-low_case ).
-
-
-
-
-
-
-
-
-
   ENDMETHOD.
 ENDCLASS.
