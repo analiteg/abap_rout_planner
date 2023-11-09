@@ -422,10 +422,9 @@ CLASS lcl_route IMPLEMENTATION.
 
 
     agents = VALUE #( ( start_location = VALUE #( ( CONV #( '23.19756076017041' ) ) ( CONV #( '53.14327315' ) ) )   time_windows = VALUE #( ( time_wind = VALUE #( ( 0 ) ( 10800  ) ) ) ) )
-
+                      ( start_location = VALUE #( ( CONV #( '23.19756076017045' ) ) ( CONV #( '53.14327319' ) ) )   time_windows = VALUE #( ( time_wind = VALUE #( ( 0 ) ( 10800  ) ) ) ) )
     ).
 
-*time_windows = VALUE #(   ( 0 ) ( 10800  )  )
 
     " Locations warehouse
     DATA locations TYPE STANDARD TABLE OF ty_locations WITH KEY id.
@@ -455,7 +454,9 @@ CLASS lcl_route IMPLEMENTATION.
 
     DATA(char) = '{"time_wind":[0,10800]}'.
     DATA(new_char) = '[0,10800]'.
-    REPLACE char WITH new_char INTO lv_json.
+
+    REPLACE ALL OCCURRENCES OF char IN lv_json WITH new_char.
+*    REPLACE char WITH new_char INTO lv_json.
 
 
 
@@ -475,6 +476,41 @@ CLASS lcl_route IMPLEMENTATION.
                                          pretty_name  = /ui2/cl_json=>pretty_mode-user
                                          assoc_arrays = abap_true
                                CHANGING  data         = lr_data ).
+
+    ASSIGN lr_data->* TO FIELD-SYMBOL(<fs_data>).
+    ASSIGN COMPONENT 'FEATURES' OF STRUCTURE <fs_data> TO FIELD-SYMBOL(<fs_features>).
+    ASSIGN <fs_features>->* TO FIELD-SYMBOL(<fs_features_table>).
+
+    LOOP AT <fs_features_table> ASSIGNING FIELD-SYMBOL(<fs_features_table_line>).
+      ASSIGN <fs_features_table_line>->* TO FIELD-SYMBOL(<fs_features_table_line_1>).
+      ASSIGN COMPONENT 'GEOMETRY'   OF STRUCTURE <fs_features_table_line_1> TO FIELD-SYMBOL(<fs_geometry>).
+      ASSIGN COMPONENT 'PROPERTIES' OF STRUCTURE <fs_features_table_line_1> TO FIELD-SYMBOL(<fs_properties>).
+
+      ASSIGN <fs_geometry>->* TO FIELD-SYMBOL(<fs_geometry_values>).
+      ASSIGN <fs_properties>->* TO FIELD-SYMBOL(<fs_properties_values>).
+
+      ASSIGN COMPONENT 'AGENT_INDEX' OF STRUCTURE <fs_properties_values> TO FIELD-SYMBOL(<fs_properties_agent_index>).
+      ASSIGN COMPONENT 'DISTANCE'    OF STRUCTURE <fs_properties_values> TO FIELD-SYMBOL(<fs_properties_distance>).
+      ASSIGN COMPONENT 'MODE'        OF STRUCTURE <fs_properties_values> TO FIELD-SYMBOL(<fs_properties_mode>).
+      ASSIGN COMPONENT 'START_TIME'  OF STRUCTURE <fs_properties_values> TO FIELD-SYMBOL(<fs_properties_start_time>).
+      ASSIGN COMPONENT 'END_TIME'    OF STRUCTURE <fs_properties_values> TO FIELD-SYMBOL(<fs_properties_end_time>).
+
+
+
+
+
+
+
+
+
+    ENDLOOP.
+
+
+
+
+
+
+
 
 
 
