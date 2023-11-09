@@ -87,6 +87,7 @@ CLASS lcl_route DEFINITION CREATE PRIVATE.
     CONSTANTS api_key      TYPE string VALUE 'fc1823fd9ff24e1db96dced76209c85d'.
     CONSTANTS content_type TYPE string VALUE 'Content-type'.
     CONSTANTS json_content TYPE string VALUE 'text/xml; charset=UTF-8'.
+    CONSTANTS json_content2 TYPE string VALUE 'application/json'.
 
 ENDCLASS.
 
@@ -373,11 +374,19 @@ CLASS lcl_route IMPLEMENTATION.
               " TODO: variable is assigned but never used (ABAP cleaner)
               INTO   TABLE @DATA(rt_return).
 
-*    CONSTANTS base_route_url     TYPE string VALUE 'https://api.geoapify.com/v1/routeplanner?apiKey=fc1823fd9ff24e1db96dced76209c85d'.
+    CONSTANTS base_route_url     TYPE string VALUE 'https://api.geoapify.com/v1/routeplanner?apiKey=fc1823fd9ff24e1db96dced76209c85d'.
+
+
+
+
+    TYPES : BEGIN OF ty_timew,
+              time_wind TYPE STANDARD TABLE OF i WITH EMPTY KEY,
+            END OF ty_timew.
+
 
     TYPES : BEGIN OF ty_agents,
               start_location TYPE STANDARD TABLE OF decfloat34 WITH EMPTY KEY,
-              time_windows   TYPE STANDARD TABLE OF i WITH EMPTY KEY,
+              time_windows   TYPE STANDARD TABLE OF ty_timew WITH EMPTY KEY,
             END OF ty_agents.
 
     TYPES : BEGIN OF ty_pickup,
@@ -412,8 +421,11 @@ CLASS lcl_route IMPLEMENTATION.
     DATA agents          TYPE STANDARD TABLE OF ty_agents WITH EMPTY KEY.
 
 
-    agents = VALUE #( ( start_location = VALUE #( ( CONV #( '23.19756076017041' ) ) ( CONV #( '53.14327315' ) ) )  time_windows = VALUE #(  ( 0 ) ( 10800  )  )   ) ).
+    agents = VALUE #( ( start_location = VALUE #( ( CONV #( '23.19756076017041' ) ) ( CONV #( '53.14327315' ) ) )   time_windows = VALUE #( ( time_wind = VALUE #( ( 0 ) ( 10800  ) ) ) ) )
 
+    ).
+
+*time_windows = VALUE #(   ( 0 ) ( 10800  )  )
 
     " Locations warehouse
     DATA locations TYPE STANDARD TABLE OF ty_locations WITH KEY id.
@@ -432,23 +444,40 @@ CLASS lcl_route IMPLEMENTATION.
     ENDLOOP.
 
 
-
-
-
-
-
     " Body
-    DATA body TYPE STANDARD TABLE OF ty_body WITH EMPTY KEY.
-    body = VALUE #( ( mode = 'drive' agents = agents shipments = shipments locations = locations ) ).
-
-
-
-
-
-
+    DATA body TYPE  ty_body.
+    body = VALUE #(  mode = 'drive' agents = agents shipments = shipments locations = locations  ).
 
 
 
     DATA(lv_json) = /ui2/cl_json=>serialize( data = body  pretty_name = /ui2/cl_json=>pretty_mode-low_case ).
+
+
+    DATA(char) = '{"time_wind":[0,10800]}'.
+    DATA(new_char) = '[0,10800]'.
+    REPLACE char WITH new_char INTO lv_json.
+
+
+
+    DATA(url) = |{ base_route_url }|.
+    DATA(client) = create_client( url ).
+    DATA(req) = client->get_http_request(  ).
+    req->set_text( lv_json ).
+    req->set_header_field( i_name = content_type i_value = json_content2 ).
+
+    DATA(result) = client->execute( if_web_http_client=>post )->get_text(  ).
+    client->close(  ).
+
+
+    DATA lr_data TYPE REF TO data.
+
+    /ui2/cl_json=>deserialize( EXPORTING json         = result
+                                         pretty_name  = /ui2/cl_json=>pretty_mode-user
+                                         assoc_arrays = abap_true
+                               CHANGING  data         = lr_data ).
+
+
+
+
   ENDMETHOD.
 ENDCLASS.
