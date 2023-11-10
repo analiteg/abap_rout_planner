@@ -82,11 +82,11 @@ CLASS lcl_route DEFINITION CREATE PRIVATE.
   PRIVATE SECTION.
     CLASS-DATA lo_route TYPE REF TO lcl_route.
 
-    CONSTANTS base_url     TYPE string VALUE 'https://api.geoapify.com/v1/geocode/search?text='.
-    CONSTANTS route_url    TYPE string VALUE 'https://api.geoapify.com/v1/routing?waypoints='.
-    CONSTANTS api_key      TYPE string VALUE 'fc1823fd9ff24e1db96dced76209c85d'.
-    CONSTANTS content_type TYPE string VALUE 'Content-type'.
-    CONSTANTS json_content TYPE string VALUE 'text/xml; charset=UTF-8'.
+    CONSTANTS base_url      TYPE string VALUE 'https://api.geoapify.com/v1/geocode/search?text='.
+    CONSTANTS route_url     TYPE string VALUE 'https://api.geoapify.com/v1/routing?waypoints='.
+    CONSTANTS api_key       TYPE string VALUE 'fc1823fd9ff24e1db96dced76209c85d'.
+    CONSTANTS content_type  TYPE string VALUE 'Content-type'.
+    CONSTANTS json_content  TYPE string VALUE 'text/xml; charset=UTF-8'.
     CONSTANTS json_content2 TYPE string VALUE 'application/json'.
 
 ENDCLASS.
@@ -362,27 +362,11 @@ CLASS lcl_route IMPLEMENTATION.
   ENDMETHOD.
 
   METHOD get_optimal_delivery_rout.
-    SELECT
-    zo~uuid,
-    zo~longitude AS olongitude,
-    zo~latitude AS olatitude,
-    zw~uuid_w,
-    zw~longitude AS wlongitude,
-    zw~latitude AS wlatitude
-    FROM zaorders AS zo
-              INNER JOIN zawarehouse AS zw ON zo~uuid_w = zw~uuid_w
-              " TODO: variable is assigned but never used (ABAP cleaner)
-              INTO   TABLE @DATA(rt_return).
-
-    CONSTANTS base_route_url     TYPE string VALUE 'https://api.geoapify.com/v1/routeplanner?apiKey=fc1823fd9ff24e1db96dced76209c85d'.
-
-
-
+    CONSTANTS base_route_url TYPE string VALUE 'https://api.geoapify.com/v1/routeplanner?apiKey=fc1823fd9ff24e1db96dced76209c85d'.
 
     TYPES : BEGIN OF ty_timew,
               time_wind TYPE STANDARD TABLE OF i WITH EMPTY KEY,
             END OF ty_timew.
-
 
     TYPES : BEGIN OF ty_agents,
               start_location TYPE STANDARD TABLE OF decfloat34 WITH EMPTY KEY,
@@ -418,57 +402,51 @@ CLASS lcl_route IMPLEMENTATION.
             END OF ty_body.
 
     " Agents
-    DATA agents          TYPE STANDARD TABLE OF ty_agents WITH EMPTY KEY.
+    DATA agents TYPE STANDARD TABLE OF ty_agents WITH EMPTY KEY.
 
-
-    agents = VALUE #( ( start_location = VALUE #( ( CONV #( '23.19756076017041' ) ) ( CONV #( '53.14327315' ) ) )   time_windows = VALUE #( ( time_wind = VALUE #( ( 0 ) ( 10800  ) ) ) ) )
-                      ( start_location = VALUE #( ( CONV #( '23.19756076017045' ) ) ( CONV #( '53.14327319' ) ) )   time_windows = VALUE #( ( time_wind = VALUE #( ( 0 ) ( 10800  ) ) ) ) )
-    ).
-
+    agents = VALUE #( time_windows = VALUE #( ( time_wind = VALUE #( ( 0 ) ( 10800  ) ) ) )
+                      ( start_location = VALUE #( ( CONV #( '23.19756076017041' ) ) ( CONV #( '53.14327315' ) ) ) )
+                      ( start_location = VALUE #( ( CONV #( '23.19756076017045' ) ) ( CONV #( '53.14327319' ) ) ) ) ).
 
     " Locations warehouse
     DATA locations TYPE STANDARD TABLE OF ty_locations WITH KEY id.
     DATA(warehouse) = get_warehouses( ).
     LOOP AT warehouse ASSIGNING FIELD-SYMBOL(<fs_warehouse>).
-      locations = VALUE #( BASE locations ( id = <fs_warehouse>-uuid_w  location = VALUE #( (  <fs_warehouse>-longitude )  (  <fs_warehouse>-latitude ) ) ) ).
+      locations = VALUE #(
+          BASE locations
+          ( id = <fs_warehouse>-uuid_w  location = VALUE #( (  <fs_warehouse>-longitude ) (  <fs_warehouse>-latitude ) ) ) ).
     ENDLOOP.
-
 
     " Shipments
-    DATA shipments     TYPE STANDARD TABLE OF ty_shipments WITH EMPTY KEY.
+    DATA shipments TYPE STANDARD TABLE OF ty_shipments WITH EMPTY KEY.
     DATA(orders) = get_orders( ).
     LOOP AT orders ASSIGNING FIELD-SYMBOL(<fs_orders>).
-      shipments = VALUE #( BASE shipments ( id = <fs_orders>-uuid pickup = VALUE #( location_index =  line_index( locations[ id = <fs_orders>-uuid_w ]  ) - 1   duration = 120  )
-                                            delivery = VALUE #(  location = VALUE #( (  <fs_orders>-longitude  ) (  <fs_orders>-latitude  ) )  duration = 120 ) ) ).
+      shipments = VALUE #(
+          BASE shipments
+          ( id       = <fs_orders>-uuid
+            pickup   = VALUE #( location_index =  line_index( locations[ id = <fs_orders>-uuid_w ]  ) - 1   duration = 120  )
+            delivery = VALUE #(  location = VALUE #( (  <fs_orders>-longitude  ) (  <fs_orders>-latitude  ) )  duration = 120 ) ) ).
     ENDLOOP.
 
-
     " Body
-    DATA body TYPE  ty_body.
+    DATA body TYPE ty_body.
     body = VALUE #(  mode = 'drive' agents = agents shipments = shipments locations = locations  ).
-
-
 
     DATA(lv_json) = /ui2/cl_json=>serialize( data = body  pretty_name = /ui2/cl_json=>pretty_mode-low_case ).
 
-
     DATA(char) = '{"time_wind":[0,10800]}'.
-    DATA(new_char) = '[0,10800]'.
+    DATA(new_char) = '[0,10800]'. "corresponds to 3-hours working day
 
     REPLACE ALL OCCURRENCES OF char IN lv_json WITH new_char.
-*    REPLACE char WITH new_char INTO lv_json.
-
-
 
     DATA(url) = |{ base_route_url }|.
     DATA(client) = create_client( url ).
-    DATA(req) = client->get_http_request(  ).
+    DATA(req) = client->get_http_request( ).
     req->set_text( lv_json ).
     req->set_header_field( i_name = content_type i_value = json_content2 ).
 
-    DATA(result) = client->execute( if_web_http_client=>post )->get_text(  ).
-    client->close(  ).
-
+    DATA(result) = client->execute( if_web_http_client=>post )->get_text( ).
+    client->close( ).
 
     DATA lr_data TYPE REF TO data.
 
@@ -476,6 +454,32 @@ CLASS lcl_route IMPLEMENTATION.
                                          pretty_name  = /ui2/cl_json=>pretty_mode-user
                                          assoc_arrays = abap_true
                                CHANGING  data         = lr_data ).
+
+
+
+    TYPES : BEGIN OF ty_agent_info,
+              agent_index TYPE i,
+              mode        TYPE string,
+              distance    TYPE i,
+              start_time  TYPE i,
+              end_time    TYPE i,
+            END OF ty_agent_info.
+
+
+    DATA agent_info_table TYPE STANDARD TABLE OF ty_agent_info.
+
+
+    TYPES : BEGIN OF ty_agent_legs,
+              time                TYPE i,
+              distance            TYPE i,
+              from_waypoint_index TYPE i,
+              to_waypoint_index   TYPE i,
+            END OF ty_agent_legs.
+
+    DATA agent_legs_table TYPE STANDARD TABLE OF ty_agent_legs.
+
+
+
 
     ASSIGN lr_data->* TO FIELD-SYMBOL(<fs_data>).
     ASSIGN COMPONENT 'FEATURES' OF STRUCTURE <fs_data> TO FIELD-SYMBOL(<fs_features>).
@@ -486,16 +490,54 @@ CLASS lcl_route IMPLEMENTATION.
       ASSIGN COMPONENT 'GEOMETRY'   OF STRUCTURE <fs_features_table_line_1> TO FIELD-SYMBOL(<fs_geometry>).
       ASSIGN COMPONENT 'PROPERTIES' OF STRUCTURE <fs_features_table_line_1> TO FIELD-SYMBOL(<fs_properties>).
 
+
       ASSIGN <fs_geometry>->* TO FIELD-SYMBOL(<fs_geometry_values>).
       ASSIGN <fs_properties>->* TO FIELD-SYMBOL(<fs_properties_values>).
 
       ASSIGN COMPONENT 'AGENT_INDEX' OF STRUCTURE <fs_properties_values> TO FIELD-SYMBOL(<fs_properties_agent_index>).
-      ASSIGN COMPONENT 'DISTANCE'    OF STRUCTURE <fs_properties_values> TO FIELD-SYMBOL(<fs_properties_distance>).
+      ASSIGN <fs_properties_agent_index>->* TO FIELD-SYMBOL(<fs_properties_aindex_value>).
+      ASSIGN COMPONENT 'DISTANCE' OF STRUCTURE <fs_properties_values> TO FIELD-SYMBOL(<fs_properties_distance>).
+      ASSIGN <fs_properties_distance>->* TO FIELD-SYMBOL(<fs_properties_distance_value>).
       ASSIGN COMPONENT 'MODE'        OF STRUCTURE <fs_properties_values> TO FIELD-SYMBOL(<fs_properties_mode>).
+      ASSIGN <fs_properties_mode>->* TO FIELD-SYMBOL(<fs_properties_mode_value>).
       ASSIGN COMPONENT 'START_TIME'  OF STRUCTURE <fs_properties_values> TO FIELD-SYMBOL(<fs_properties_start_time>).
-      ASSIGN COMPONENT 'END_TIME'    OF STRUCTURE <fs_properties_values> TO FIELD-SYMBOL(<fs_properties_end_time>).
+      ASSIGN <fs_properties_start_time>->* TO FIELD-SYMBOL(<fs_properties_start_time_val>).
+      ASSIGN COMPONENT 'END_TIME' OF STRUCTURE <fs_properties_values> TO FIELD-SYMBOL(<fs_properties_end_time>).
+      ASSIGN <fs_properties_end_time>->* TO FIELD-SYMBOL(<fs_properties_end_time_val>).
 
 
+      agent_info_table = VALUE #( BASE agent_info_table ( agent_index = <fs_properties_aindex_value>
+                                                          mode =  <fs_properties_mode_value>
+                                                          distance = <fs_properties_distance_value>
+                                                          start_time =  <fs_properties_start_time_val>
+                                                          end_time = <fs_properties_end_time_val> ) ).
+
+
+      ASSIGN COMPONENT 'LEGS' OF STRUCTURE <fs_properties_values> TO FIELD-SYMBOL(<fs_properties_legs>).
+      ASSIGN <fs_properties_legs>->* TO FIELD-SYMBOL(<fs_properties_legs_value>).
+
+
+
+      LOOP AT <fs_properties_legs_value> ASSIGNING FIELD-SYMBOL(<fs_agent>).
+        ASSIGN <fs_agent>->* TO FIELD-SYMBOL(<fs_legs>).
+        ASSIGN COMPONENT 'TIME' OF STRUCTURE <fs_legs> TO FIELD-SYMBOL(<fs_legs_time>).
+        ASSIGN <fs_legs_time>->* TO FIELD-SYMBOL(<fs_time>).
+
+        ASSIGN COMPONENT 'DISTANCE' OF STRUCTURE <fs_legs> TO FIELD-SYMBOL(<fs_legs_distance>).
+        ASSIGN <fs_legs_distance>->* TO FIELD-SYMBOL(<fs_distance>).
+
+        ASSIGN COMPONENT 'FROM_WAYPOINT_INDEX' OF STRUCTURE <fs_legs> TO FIELD-SYMBOL(<fs_legs_fromwpi>).
+        ASSIGN <fs_legs_fromwpi>->* TO FIELD-SYMBOL(<fs_fromwpi>).
+
+        ASSIGN COMPONENT 'TO_WAYPOINT_INDEX' OF STRUCTURE <fs_legs> TO FIELD-SYMBOL(<fs_legs_towpi>).
+        ASSIGN <fs_legs_towpi>->* TO FIELD-SYMBOL(<fs_towpi>).
+
+        agent_legs_table = VALUE #( BASE  agent_legs_table  (  time = <fs_time>
+                                                               distance = <fs_distance>
+                                                               from_waypoint_index = <fs_fromwpi>
+                                                               to_waypoint_index = <fs_towpi>  )  ).
+
+      ENDLOOP.
 
 
 
@@ -504,16 +546,5 @@ CLASS lcl_route IMPLEMENTATION.
 
 
     ENDLOOP.
-
-
-
-
-
-
-
-
-
-
-
   ENDMETHOD.
 ENDCLASS.
