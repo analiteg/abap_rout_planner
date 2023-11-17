@@ -435,8 +435,7 @@ CLASS lcl_route IMPLEMENTATION.
     DATA(lv_json) = /ui2/cl_json=>serialize( data = body  pretty_name = /ui2/cl_json=>pretty_mode-low_case ).
 
     DATA(char) = '{"time_wind":[0,10800]}'.
-    DATA(new_char) = '[0,10800]'. "corresponds to 3-hours working day
-
+    DATA(new_char) = '[0,10800]'. " corresponds to 3-hours working day
     REPLACE ALL OCCURRENCES OF char IN lv_json WITH new_char.
 
     DATA(url) = |{ base_route_url }|.
@@ -455,8 +454,6 @@ CLASS lcl_route IMPLEMENTATION.
                                          assoc_arrays = abap_true
                                CHANGING  data         = lr_data ).
 
-
-
     TYPES : BEGIN OF ty_agent_info,
               agent_index TYPE i,
               mode        TYPE string,
@@ -465,9 +462,8 @@ CLASS lcl_route IMPLEMENTATION.
               end_time    TYPE i,
             END OF ty_agent_info.
 
-
+    " TODO: variable is assigned but never used (ABAP cleaner)
     DATA agent_info_table TYPE STANDARD TABLE OF ty_agent_info.
-
 
     TYPES : BEGIN OF ty_agent_legs,
               time                TYPE i,
@@ -476,10 +472,8 @@ CLASS lcl_route IMPLEMENTATION.
               to_waypoint_index   TYPE i,
             END OF ty_agent_legs.
 
+    " TODO: variable is assigned but never used (ABAP cleaner)
     DATA agent_legs_table TYPE STANDARD TABLE OF ty_agent_legs.
-
-
-
 
     ASSIGN lr_data->* TO FIELD-SYMBOL(<fs_data>).
     ASSIGN COMPONENT 'FEATURES' OF STRUCTURE <fs_data> TO FIELD-SYMBOL(<fs_features>).
@@ -490,7 +484,7 @@ CLASS lcl_route IMPLEMENTATION.
       ASSIGN COMPONENT 'GEOMETRY'   OF STRUCTURE <fs_features_table_line_1> TO FIELD-SYMBOL(<fs_geometry>).
       ASSIGN COMPONENT 'PROPERTIES' OF STRUCTURE <fs_features_table_line_1> TO FIELD-SYMBOL(<fs_properties>).
 
-
+      " TODO: variable is assigned but never used (ABAP cleaner)
       ASSIGN <fs_geometry>->* TO FIELD-SYMBOL(<fs_geometry_values>).
       ASSIGN <fs_properties>->* TO FIELD-SYMBOL(<fs_properties_values>).
 
@@ -505,18 +499,15 @@ CLASS lcl_route IMPLEMENTATION.
       ASSIGN COMPONENT 'END_TIME' OF STRUCTURE <fs_properties_values> TO FIELD-SYMBOL(<fs_properties_end_time>).
       ASSIGN <fs_properties_end_time>->* TO FIELD-SYMBOL(<fs_properties_end_time_val>).
 
-
-      agent_info_table = VALUE #( BASE agent_info_table ( agent_index = <fs_properties_aindex_value>
-                                                          mode =  <fs_properties_mode_value>
-                                                          distance = <fs_properties_distance_value>
-                                                          start_time =  <fs_properties_start_time_val>
-                                                          end_time = <fs_properties_end_time_val> ) ).
-
+      agent_info_table = VALUE #( BASE agent_info_table
+                                  ( agent_index = <fs_properties_aindex_value>
+                                    mode        = <fs_properties_mode_value>
+                                    distance    = <fs_properties_distance_value>
+                                    start_time  = <fs_properties_start_time_val>
+                                    end_time    = <fs_properties_end_time_val> ) ).
 
       ASSIGN COMPONENT 'LEGS' OF STRUCTURE <fs_properties_values> TO FIELD-SYMBOL(<fs_properties_legs>).
       ASSIGN <fs_properties_legs>->* TO FIELD-SYMBOL(<fs_properties_legs_value>).
-
-
 
       LOOP AT <fs_properties_legs_value> ASSIGNING FIELD-SYMBOL(<fs_agent>).
         ASSIGN <fs_agent>->* TO FIELD-SYMBOL(<fs_legs>).
@@ -532,12 +523,48 @@ CLASS lcl_route IMPLEMENTATION.
         ASSIGN COMPONENT 'TO_WAYPOINT_INDEX' OF STRUCTURE <fs_legs> TO FIELD-SYMBOL(<fs_legs_towpi>).
         ASSIGN <fs_legs_towpi>->* TO FIELD-SYMBOL(<fs_towpi>).
 
-        agent_legs_table = VALUE #( BASE  agent_legs_table  (  time = <fs_time>
-                                                               distance = <fs_distance>
-                                                               from_waypoint_index = <fs_fromwpi>
-                                                               to_waypoint_index = <fs_towpi>  )  ).
+        agent_legs_table = VALUE #( BASE  agent_legs_table
+                                    ( time                = <fs_time>
+                                      distance            = <fs_distance>
+                                      from_waypoint_index = <fs_fromwpi>
+                                      to_waypoint_index   = <fs_towpi>  )  ).
 
       ENDLOOP.
+
+
+
+      ASSIGN COMPONENT 'WAYPOINTS' OF STRUCTURE <fs_properties_values> TO FIELD-SYMBOL(<fs_properties_way>).
+      ASSIGN <fs_properties_way>->* TO FIELD-SYMBOL(<fs_properties_way_value>).
+      LOOP AT <fs_properties_way_value> ASSIGNING FIELD-SYMBOL(<fs_waypoint_table>).
+        ASSIGN <fs_waypoint_table>->* TO FIELD-SYMBOL(<fs_waypoint_line>).
+
+        ASSIGN COMPONENT 'ACTIONS' OF STRUCTURE <fs_waypoint_line> TO FIELD-SYMBOL(<fs_actions>).
+        ASSIGN <fs_actions>->* TO FIELD-SYMBOL(<fs_actions_value>).
+
+        LOOP AT <fs_actions_value> ASSIGNING FIELD-SYMBOL(<fs_actions_table>).
+        ASSIGN <fs_actions_table>->* TO FIELD-SYMBOL(<fs_action>).
+
+        ASSIGN COMPONENT 'WAYPOINT_INDEX' OF STRUCTURE <fs_action> TO FIELD-SYMBOL(<fs_wpi>).
+        ASSIGN <fs_wpi>->* TO FIELD-SYMBOL(<fs_waypoint_index>).
+
+        ASSIGN COMPONENT 'SHIPMENT_ID' OF STRUCTURE <fs_action> TO FIELD-SYMBOL(<fs_shid>).
+        ASSIGN <fs_shid>->* TO FIELD-SYMBOL(<fs_shipment_id>).
+
+        ASSIGN COMPONENT 'SHIPMENT_INDEX' OF STRUCTURE <fs_action> TO FIELD-SYMBOL(<fs_shind>).
+        ASSIGN <fs_shind>->* TO FIELD-SYMBOL(<fs_shipment_index>).
+
+        ASSIGN COMPONENT 'TYPE' OF STRUCTURE <fs_action> TO FIELD-SYMBOL(<fs_tp>).
+        ASSIGN <fs_tp>->* TO FIELD-SYMBOL(<fs_type>).
+
+
+
+        ENDLOOP.
+
+
+      ENDLOOP.
+
+
+
 
 
 

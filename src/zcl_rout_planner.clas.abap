@@ -8,7 +8,10 @@ CLASS zcl_rout_planner DEFINITION
 ENDCLASS.
 
 
-CLASS zcl_rout_planner IMPLEMENTATION.
+
+CLASS ZCL_ROUT_PLANNER IMPLEMENTATION.
+
+
   METHOD if_oo_adt_classrun~main.
     " Step 1 - Create Instance (singleton)
     DATA(mo_route) = lcl_route=>create_instance( ).
