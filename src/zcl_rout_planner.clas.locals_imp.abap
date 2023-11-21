@@ -531,30 +531,132 @@ CLASS lcl_route IMPLEMENTATION.
 
       ENDLOOP.
 
+      TYPES : BEGIN OF ty_waypoints,
+                agent_index    TYPE i,
+                action_type    TYPE string,
+                waypoint_index TYPE i,
+                shipment_id    TYPE string,
+                shipment_index TYPE i,
+                location_id    TYPE string,
+                latitude       TYPE decfloat34,
+                longitude      TYPE decfloat34,
+              END OF ty_waypoints.
 
+      DATA waypoints_table TYPE STANDARD TABLE OF ty_waypoints.
+
+
+      TYPES : BEGIN OF ty_location,
+                coord TYPE decfloat34,
+              END OF ty_location.
+      DATA original_location_table TYPE STANDARD TABLE OF  ty_location.
 
       ASSIGN COMPONENT 'WAYPOINTS' OF STRUCTURE <fs_properties_values> TO FIELD-SYMBOL(<fs_properties_way>).
       ASSIGN <fs_properties_way>->* TO FIELD-SYMBOL(<fs_properties_way_value>).
       LOOP AT <fs_properties_way_value> ASSIGNING FIELD-SYMBOL(<fs_waypoint_table>).
         ASSIGN <fs_waypoint_table>->* TO FIELD-SYMBOL(<fs_waypoint_line>).
 
+        ASSIGN COMPONENT 'ORIGINAL_LOCATION' OF STRUCTURE <fs_waypoint_line> TO FIELD-SYMBOL(<fs_orloc>).
+        ASSIGN <fs_orloc>->* TO FIELD-SYMBOL(<fs_orloc_value>).
+        LOOP AT <fs_orloc_value> ASSIGNING FIELD-SYMBOL(<fs_orlc_table>).
+          ASSIGN <fs_orlc_table>->* TO FIELD-SYMBOL(<fs_loc_tab_value>).
+
+          original_location_table = VALUE #( BASE  original_location_table
+                                             (
+                                             coord = <fs_loc_tab_value>
+                                                 )  ).
+
+        ENDLOOP.
+
+
         ASSIGN COMPONENT 'ACTIONS' OF STRUCTURE <fs_waypoint_line> TO FIELD-SYMBOL(<fs_actions>).
         ASSIGN <fs_actions>->* TO FIELD-SYMBOL(<fs_actions_value>).
 
         LOOP AT <fs_actions_value> ASSIGNING FIELD-SYMBOL(<fs_actions_table>).
-        ASSIGN <fs_actions_table>->* TO FIELD-SYMBOL(<fs_action>).
+          ASSIGN <fs_actions_table>->* TO FIELD-SYMBOL(<fs_action>).
 
-        ASSIGN COMPONENT 'WAYPOINT_INDEX' OF STRUCTURE <fs_action> TO FIELD-SYMBOL(<fs_wpi>).
-        ASSIGN <fs_wpi>->* TO FIELD-SYMBOL(<fs_waypoint_index>).
 
-        ASSIGN COMPONENT 'SHIPMENT_ID' OF STRUCTURE <fs_action> TO FIELD-SYMBOL(<fs_shid>).
-        ASSIGN <fs_shid>->* TO FIELD-SYMBOL(<fs_shipment_id>).
 
-        ASSIGN COMPONENT 'SHIPMENT_INDEX' OF STRUCTURE <fs_action> TO FIELD-SYMBOL(<fs_shind>).
-        ASSIGN <fs_shind>->* TO FIELD-SYMBOL(<fs_shipment_index>).
+          ASSIGN COMPONENT 'TYPE' OF STRUCTURE <fs_action> TO FIELD-SYMBOL(<fs_tp>).
+          ASSIGN <fs_tp>->* TO FIELD-SYMBOL(<fs_type>).
 
-        ASSIGN COMPONENT 'TYPE' OF STRUCTURE <fs_action> TO FIELD-SYMBOL(<fs_tp>).
-        ASSIGN <fs_tp>->* TO FIELD-SYMBOL(<fs_type>).
+          IF <fs_type> = 'start'.
+
+            ASSIGN COMPONENT 'WAYPOINT_INDEX' OF STRUCTURE <fs_action> TO FIELD-SYMBOL(<fs_wpi>).
+            ASSIGN <fs_wpi>->* TO FIELD-SYMBOL(<fs_waypoint_index>).
+
+
+
+
+            waypoints_table = VALUE #( BASE  waypoints_table
+                                   (
+                                    agent_index = <fs_properties_aindex_value>
+                                    action_type    = <fs_type>
+                                    waypoint_index = <fs_waypoint_index>
+                                    latitude = original_location_table[ 1 ]-coord
+                                    longitude = original_location_table[ 2 ]-coord
+
+                                       )  ).
+
+          ENDIF.
+
+
+          IF <fs_type> = 'pickup'.
+
+            ASSIGN COMPONENT 'WAYPOINT_INDEX' OF STRUCTURE <fs_action> TO <fs_wpi>.
+            ASSIGN <fs_wpi>->* TO <fs_waypoint_index>.
+
+            ASSIGN COMPONENT 'SHIPMENT_ID' OF STRUCTURE <fs_action> TO FIELD-SYMBOL(<fs_shid>).
+            ASSIGN <fs_shid>->* TO FIELD-SYMBOL(<fs_shipment_id>).
+
+            ASSIGN COMPONENT 'SHIPMENT_INDEX' OF STRUCTURE <fs_action> TO FIELD-SYMBOL(<fs_shind>).
+            ASSIGN <fs_shind>->* TO FIELD-SYMBOL(<fs_shipment_index>).
+
+            ASSIGN COMPONENT 'LOCATION_ID' OF STRUCTURE <fs_action> TO FIELD-SYMBOL(<fs_lcid>).
+            ASSIGN <fs_lcid>->* TO FIELD-SYMBOL(<fs_location_id>).
+
+            waypoints_table = VALUE #( BASE  waypoints_table
+
+                                       ( agent_index    = <fs_properties_aindex_value>
+                                         action_type    = <fs_type>
+                                         waypoint_index = <fs_waypoint_index>
+                                         shipment_id    = <fs_shipment_id>
+                                         shipment_index = <fs_shipment_index>
+                                         location_id    = <fs_location_id>
+                                         latitude       = original_location_table[ 1 ]-coord
+                                         longitude      = original_location_table[ 2 ]-coord ) ).
+
+
+
+          ENDIF.
+
+
+
+
+
+          IF <fs_type> = 'delivery'.
+
+            ASSIGN COMPONENT 'WAYPOINT_INDEX' OF STRUCTURE <fs_action> TO <fs_wpi>.
+            ASSIGN <fs_wpi>->* TO <fs_waypoint_index>.
+
+            ASSIGN COMPONENT 'SHIPMENT_ID' OF STRUCTURE <fs_action> TO <fs_shid>.
+            ASSIGN <fs_shid>->* TO <fs_shipment_id>.
+
+            ASSIGN COMPONENT 'SHIPMENT_INDEX' OF STRUCTURE <fs_action> TO <fs_shind>.
+            ASSIGN <fs_shind>->* TO <fs_shipment_index>.
+
+            waypoints_table = VALUE #( BASE  waypoints_table
+                                       ( agent_index    = <fs_properties_aindex_value>
+                                         action_type    = <fs_type>
+                                         waypoint_index = <fs_waypoint_index>
+                                         shipment_id    = <fs_shipment_id>
+                                         shipment_index = <fs_shipment_index>
+                                         latitude       = original_location_table[ 1 ]-coord
+                                         longitude      = original_location_table[ 2 ]-coord ) ).
+
+
+          ENDIF.
+
+
 
 
 
