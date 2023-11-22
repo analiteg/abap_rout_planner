@@ -197,7 +197,14 @@ CLASS ZCL_ROUT_PLANNER IMPLEMENTATION.
 
 
     TRY.
-        out->write( mo_route->get_optimal_delivery_rout( )  ).
+
+         mo_route->get_optimal_delivery_rout( IMPORTING et_waypoints = DATA(wap)  et_agent_info = DATA(a_info) ).
+
+
+          out->write( wap ).
+
+         out->write( a_info ).
+
       CATCH cx_root INTO DATA(exc).
         out->write( exc->get_text( ) ).
     ENDTRY.
