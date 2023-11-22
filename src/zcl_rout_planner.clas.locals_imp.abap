@@ -493,11 +493,7 @@ CLASS lcl_route IMPLEMENTATION.
 
     LOOP AT <fs_features_table> ASSIGNING FIELD-SYMBOL(<fs_features_table_line>).
       ASSIGN <fs_features_table_line>->* TO FIELD-SYMBOL(<fs_features_table_line_1>).
-      ASSIGN COMPONENT 'GEOMETRY'   OF STRUCTURE <fs_features_table_line_1> TO FIELD-SYMBOL(<fs_geometry>).
       ASSIGN COMPONENT 'PROPERTIES' OF STRUCTURE <fs_features_table_line_1> TO FIELD-SYMBOL(<fs_properties>).
-
-      " TODO: variable is assigned but never used (ABAP cleaner)
-      ASSIGN <fs_geometry>->* TO FIELD-SYMBOL(<fs_geometry_values>).
       ASSIGN <fs_properties>->* TO FIELD-SYMBOL(<fs_properties_values>).
 
       ASSIGN COMPONENT 'AGENT_INDEX' OF STRUCTURE <fs_properties_values> TO FIELD-SYMBOL(<fs_properties_agent_index>).

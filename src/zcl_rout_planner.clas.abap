@@ -200,15 +200,17 @@ CLASS zcl_rout_planner IMPLEMENTATION.
               time_windows   TYPE STANDARD TABLE OF ty_timew WITH EMPTY KEY,
             END OF ty_agents.
 
-    DATA agents TYPE STANDARD TABLE OF ty_agents WITH EMPTY KEY.
-    agents = VALUE #( time_windows = VALUE #( ( time_wind = VALUE #( ( 0 ) ( 10800  ) ) ) )
-                      ( start_location = VALUE #( ( CONV #( '23.19756076017041' ) ) ( CONV #( '53.14327315' ) ) ) )
-                      ( start_location = VALUE #( ( CONV #( '23.19756076017045' ) ) ( CONV #( '53.14327319' ) ) ) ) ).
+    DATA lt_agents TYPE STANDARD TABLE OF ty_agents WITH EMPTY KEY.
+    lt_agents = VALUE #( time_windows = VALUE #( ( time_wind = VALUE #( ( 0 ) ( 10800  ) ) ) )
+                         ( start_location = VALUE #( ( CONV #( '23.19756076017041' ) ) ( CONV #( '53.14327315' ) ) ) )
+                         ( start_location = VALUE #( ( CONV #( '23.19756076017045' ) ) ( CONV #( '53.14327319' ) ) ) ) ).
+
+    DATA lv_mode TYPE string VALUE 'drive'.
 
     TRY.
 
-        mo_route->get_optimal_delivery_rout( EXPORTING iv_mode       = 'drive'
-                                                       it_agents     = agents
+        mo_route->get_optimal_delivery_rout( EXPORTING iv_mode       = lv_mode
+                                                       it_agents     = lt_agents
 
                                              IMPORTING et_waypoints  = DATA(lt_waypoints)
                                                        et_agent_info = DATA(lt_agent_info)
