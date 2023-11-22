@@ -25,9 +25,6 @@ CLASS lcl_route DEFINITION CREATE PRIVATE.
               longitude      TYPE decfloat34,
             END OF ty_waypoints.
 
-    " TODO: variable is assigned but never used (ABAP cleaner)
-    DATA waypoints_table TYPE STANDARD TABLE OF ty_waypoints.
-
     TYPES : BEGIN OF ty_agent_info,
               agent_index TYPE i,
               mode        TYPE string,
@@ -35,9 +32,6 @@ CLASS lcl_route DEFINITION CREATE PRIVATE.
               start_time  TYPE i,
               end_time    TYPE i,
             END OF ty_agent_info.
-
-    " TODO: variable is assigned but never used (ABAP cleaner)
-    DATA agent_info_table TYPE STANDARD TABLE OF ty_agent_info.
 
     TYPES : BEGIN OF ty_agent_legs,
               agent_index         TYPE i,
@@ -47,14 +41,55 @@ CLASS lcl_route DEFINITION CREATE PRIVATE.
               to_waypoint_index   TYPE i,
             END OF ty_agent_legs.
 
-    " TODO: variable is assigned but never used (ABAP cleaner)
-    DATA agent_legs_table TYPE STANDARD TABLE OF ty_agent_legs.
-
     TYPES ty_orders           TYPE STANDARD TABLE OF zaorders    WITH KEY uuid uuid_w.
     TYPES ty_warehouse        TYPE STANDARD TABLE OF zawarehouse WITH KEY uuid_w.
     TYPES ty_tarif            TYPE STANDARD TABLE OF zatarif     WITH KEY min_distance max_distance.
     TYPES ty_waypoints_table  TYPE STANDARD TABLE OF ty_waypoints.
     TYPES ty_agent_info_table TYPE STANDARD TABLE OF ty_agent_info.
+    TYPES ty_agent_legs_table TYPE STANDARD TABLE OF ty_agent_legs.
+
+    DATA waypoints_table  TYPE STANDARD TABLE OF ty_waypoints.
+    DATA agent_info_table TYPE STANDARD TABLE OF ty_agent_info.
+    DATA agent_legs_table TYPE STANDARD TABLE OF ty_agent_legs.
+
+    TYPES : BEGIN OF ty_timew,
+              time_wind TYPE STANDARD TABLE OF i WITH EMPTY KEY,
+            END OF ty_timew.
+
+    TYPES : BEGIN OF ty_agents,
+              start_location TYPE STANDARD TABLE OF decfloat34 WITH EMPTY KEY,
+              time_windows   TYPE STANDARD TABLE OF ty_timew WITH EMPTY KEY,
+            END OF ty_agents.
+
+    TYPES agents TYPE STANDARD TABLE OF ty_agents WITH EMPTY KEY.
+
+    TYPES : BEGIN OF ty_pickup,
+              location_index TYPE i,
+              duration       TYPE i,
+            END OF ty_pickup.
+
+    TYPES : BEGIN OF ty_delivery,
+              location TYPE STANDARD TABLE OF decfloat34 WITH EMPTY KEY,
+              duration TYPE i,
+            END OF ty_delivery.
+
+    TYPES : BEGIN OF ty_shipments,
+              id       TYPE string,
+              delivery TYPE ty_delivery,
+              pickup   TYPE ty_pickup,
+            END OF ty_shipments.
+
+    TYPES : BEGIN OF ty_locations,
+              id       TYPE string,
+              location TYPE STANDARD TABLE OF decfloat34 WITH EMPTY KEY,
+            END OF ty_locations.
+
+    TYPES : BEGIN OF ty_body,
+              mode      TYPE string,
+              agents    TYPE STANDARD TABLE OF ty_agents WITH EMPTY KEY,
+              shipments TYPE STANDARD TABLE OF ty_shipments WITH EMPTY KEY,
+              locations TYPE STANDARD TABLE OF ty_locations WITH EMPTY KEY,
+            END OF ty_body.
 
     CLASS-METHODS create_instance
       RETURNING VALUE(ro_route) TYPE REF TO lcl_route.
@@ -113,9 +148,11 @@ CLASS lcl_route DEFINITION CREATE PRIVATE.
       RAISING   cx_static_check.
 
     METHODS get_optimal_delivery_rout
-*     IMPORTING iv_string        TYPE string
+      IMPORTING iv_mode       TYPE string
+                it_agents     TYPE agents
       EXPORTING et_waypoints  TYPE ty_waypoints_table
                 et_agent_info TYPE ty_agent_info_table
+                et_agnet_legs TYPE ty_agent_legs_table
       RAISING   cx_static_check.
 
   PRIVATE SECTION.
@@ -403,52 +440,9 @@ CLASS lcl_route IMPLEMENTATION.
   METHOD get_optimal_delivery_rout.
     CONSTANTS base_route_url TYPE string VALUE 'https://api.geoapify.com/v1/routeplanner?apiKey=fc1823fd9ff24e1db96dced76209c85d'.
 
-    TYPES : BEGIN OF ty_timew,
-              time_wind TYPE STANDARD TABLE OF i WITH EMPTY KEY,
-            END OF ty_timew.
-
-    TYPES : BEGIN OF ty_agents,
-              start_location TYPE STANDARD TABLE OF decfloat34 WITH EMPTY KEY,
-              time_windows   TYPE STANDARD TABLE OF ty_timew WITH EMPTY KEY,
-            END OF ty_agents.
-
-    TYPES : BEGIN OF ty_pickup,
-              location_index TYPE i,
-              duration       TYPE i,
-            END OF ty_pickup.
-
-    TYPES : BEGIN OF ty_delivery,
-              location TYPE STANDARD TABLE OF decfloat34 WITH EMPTY KEY,
-              duration TYPE i,
-            END OF ty_delivery.
-
-    TYPES : BEGIN OF ty_shipments,
-              id       TYPE string,
-              delivery TYPE ty_delivery,
-              pickup   TYPE ty_pickup,
-            END OF ty_shipments.
-
-    TYPES : BEGIN OF ty_locations,
-              id       TYPE string,
-              location TYPE STANDARD TABLE OF decfloat34 WITH EMPTY KEY,
-            END OF ty_locations.
-
-    TYPES : BEGIN OF ty_body,
-              mode      TYPE string,
-              agents    TYPE STANDARD TABLE OF ty_agents WITH EMPTY KEY,
-              shipments TYPE STANDARD TABLE OF ty_shipments WITH EMPTY KEY,
-              locations TYPE STANDARD TABLE OF ty_locations WITH EMPTY KEY,
-            END OF ty_body.
-
-    " Agents
-    DATA agents TYPE STANDARD TABLE OF ty_agents WITH EMPTY KEY.
-
-    agents = VALUE #( time_windows = VALUE #( ( time_wind = VALUE #( ( 0 ) ( 10800  ) ) ) )
-                      ( start_location = VALUE #( ( CONV #( '23.19756076017041' ) ) ( CONV #( '53.14327315' ) ) ) )
-                      ( start_location = VALUE #( ( CONV #( '23.19756076017045' ) ) ( CONV #( '53.14327319' ) ) ) ) ).
-
     " Locations warehouse
     DATA locations TYPE STANDARD TABLE OF ty_locations WITH KEY id.
+
     DATA(warehouse) = get_warehouses( ).
     LOOP AT warehouse ASSIGNING FIELD-SYMBOL(<fs_warehouse>).
       locations = VALUE #(
@@ -469,7 +463,7 @@ CLASS lcl_route IMPLEMENTATION.
 
     " Body
     DATA body TYPE ty_body.
-    body = VALUE #(  mode = 'drive' agents = agents shipments = shipments locations = locations  ).
+    body = VALUE #(  mode = iv_mode agents = it_agents shipments = shipments locations = locations  ).
 
     DATA(lv_json) = /ui2/cl_json=>serialize( data = body  pretty_name = /ui2/cl_json=>pretty_mode-low_case ).
 
@@ -645,12 +639,11 @@ CLASS lcl_route IMPLEMENTATION.
           ENDIF.
 
         ENDLOOP.
-
       ENDLOOP.
-
     ENDLOOP.
 
     et_waypoints = waypoints_table.
     et_agent_info = agent_info_table.
+    et_agnet_legs = agent_legs_table.
   ENDMETHOD.
 ENDCLASS.

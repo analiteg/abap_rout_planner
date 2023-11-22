@@ -8,15 +8,13 @@ CLASS zcl_rout_planner DEFINITION
 ENDCLASS.
 
 
-
-CLASS ZCL_ROUT_PLANNER IMPLEMENTATION.
-
-
+CLASS zcl_rout_planner IMPLEMENTATION.
   METHOD if_oo_adt_classrun~main.
     " Step 1 - Create Instance (singleton)
     DATA(mo_route) = lcl_route=>create_instance( ).
 
     " Step 2 - Create System UUID factory
+    " TODO: variable is assigned but only used in commented-out code (ABAP cleaner)
     DATA(system_uuid) = cl_uuid_factory=>create_system_uuid( ).
 
 *    " Step 3 - Create Warehouse Table Info
@@ -193,27 +191,35 @@ CLASS ZCL_ROUT_PLANNER IMPLEMENTATION.
 *        out->write( exc->get_text( ) ).
 *    ENDTRY.
 
+    TYPES : BEGIN OF ty_timew,
+              time_wind TYPE STANDARD TABLE OF i WITH EMPTY KEY,
+            END OF ty_timew.
 
+    TYPES : BEGIN OF ty_agents,
+              start_location TYPE STANDARD TABLE OF decfloat34 WITH EMPTY KEY,
+              time_windows   TYPE STANDARD TABLE OF ty_timew WITH EMPTY KEY,
+            END OF ty_agents.
 
+    DATA agents TYPE STANDARD TABLE OF ty_agents WITH EMPTY KEY.
+    agents = VALUE #( time_windows = VALUE #( ( time_wind = VALUE #( ( 0 ) ( 10800  ) ) ) )
+                      ( start_location = VALUE #( ( CONV #( '23.19756076017041' ) ) ( CONV #( '53.14327315' ) ) ) )
+                      ( start_location = VALUE #( ( CONV #( '23.19756076017045' ) ) ( CONV #( '53.14327319' ) ) ) ) ).
 
     TRY.
 
-         mo_route->get_optimal_delivery_rout( IMPORTING et_waypoints = DATA(wap)  et_agent_info = DATA(a_info) ).
+        mo_route->get_optimal_delivery_rout( EXPORTING iv_mode       = 'drive'
+                                                       it_agents     = agents
 
+                                             IMPORTING et_waypoints  = DATA(lt_waypoints)
+                                                       et_agent_info = DATA(lt_agent_info)
+                                                       et_agnet_legs = DATA(lt_agent_legs) ).
 
-          out->write( wap ).
-
-         out->write( a_info ).
+        out->write( lt_agent_info ).
+        out->write( lt_agent_legs ).
+        out->write( lt_waypoints ).
 
       CATCH cx_root INTO DATA(exc).
         out->write( exc->get_text( ) ).
     ENDTRY.
-
-
-
-
-
-
-
   ENDMETHOD.
 ENDCLASS.
